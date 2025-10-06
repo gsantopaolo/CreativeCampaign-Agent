@@ -61,54 +61,67 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-  subgraph UI[UI]
-    UIApp[ui-webapp (Streamlit)]
+  subgraph UI["UI"]
+    UIApp["ui-webapp / Streamlit"]
   end
-  subgraph API[API]
-    APIGW[api-gateway (FastAPI + Pydantic)]
+
+  subgraph API["API"]
+    APIGW["api-gateway / FastAPI + Pydantic"]
   end
-  subgraph BUS[NATS JetStream (queue groups)]
-    Router[orchestration-router]
-    Ctx[context-enricher]
-    Gen[image-generator]
-    Brand[brand-composer]
-    Copy[copy-generator]
-    Comp[compliance-checker]
-    Over[overlay-composer]
-    Select[scorer-selector]
-    Approve[approval-handler]
-    Alerts[alert-dispatcher (plugins)]
-    Guard[guardian-dlq]
-    Log[run-logger]
+
+  subgraph BUS["NATS JetStream (queue groups)"]
+    Router["orchestration-router"]
+    Ctx["context-enricher"]
+    Gen["image-generator"]
+    Brand["brand-composer"]
+    Copy["copy-generator"]
+    Comp["compliance-checker"]
+    Over["overlay-composer"]
+    Select["scorer-selector"]
+    Approve["approval-handler"]
+    Alerts["alert-dispatcher / plugins"]
+    Guard["guardian-dlq"]
+    Log["run-logger"]
   end
-  S3[(MinIO / S3)]
-  Mongo[(MongoDB)]
+
+  S3[("MinIO / S3")]
+  Mongo[("MongoDB")]
+
+  UIApp -->|HTTP| APIGW
   APIGW -->|briefs.ingested| Router
+
   Router -->|context.enrich.request| Ctx
   Ctx -->|context.enrich.ready| Router
+
   Router -->|creative.generate.request| Gen
   Gen -->|creative.generate.done| Router
+
   Router -->|creative.brand.compose.request| Brand
   Brand -->|creative.brand.compose.done| Router
+
   Router -->|creative.copy.generate.request| Copy
   Copy -->|creative.copy.generate.done| Comp
   Comp -->|compliance.checked| Router
+
   Router -->|creative.overlay.request| Over
   Over -->|creative.overlay.done| Select
   Select -->|creative.ready_for_review| UIApp
-  UIApp -->|Approve/Revise (HTTP)| APIGW
+
+  UIApp -- Approve / Revise --> APIGW
   APIGW -->|creative.approved / creative.revision.requested| Approve
   Approve -->|creative.generate.request (revise)| Gen
-  %% Storage & DB
+
   Gen --> S3
   Brand --> S3
   Over --> S3
+
   APIGW --> Mongo
   Router --> Mongo
   Copy --> Mongo
   Comp --> Mongo
   Select --> Mongo
   Approve --> Mongo
+
 ```
 
 ---

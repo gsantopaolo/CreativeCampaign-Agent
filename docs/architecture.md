@@ -69,7 +69,7 @@ flowchart TB
     APIGW["api-gateway / FastAPI + Pydantic"]
   end
 
-  subgraph BUS["NATS JetStream (queue groups)"]
+  subgraph BUS["NATS JetStream queue groups"]
     Router["orchestration-router"]
     Ctx["context-enricher"]
     Gen["image-generator"]
@@ -87,40 +87,41 @@ flowchart TB
   S3[(MinIO / S3)]
   Mongo[(MongoDB)]
 
-  UIApp -->|HTTP| APIGW
-  APIGW -->|briefs.ingested| Router
+  UIApp -- "HTTP" --> APIGW
+  APIGW -- "briefs.ingested" --> Router
 
-  Router -->|context.enrich.request| Ctx
-  Ctx -->|context.enrich.ready| Router
+  Router -- "context.enrich.request" --> Ctx
+  Ctx -- "context.enrich.ready" --> Router
 
-  Router -->|creative.generate.request| Gen
-  Gen -->|creative.generate.done| Router
+  Router -- "creative.generate.request" --> Gen
+  Gen -- "creative.generate.done" --> Router
 
-  Router -->|creative.brand.compose.request| Brand
-  Brand -->|creative.brand.compose.done| Router
+  Router -- "creative.brand.compose.request" --> Brand
+  Brand -- "creative.brand.compose.done" --> Router
 
-  Router -->|creative.copy.generate.request| Copy
-  Copy -->|creative.copy.generate.done| Comp
-  Comp -->|compliance.checked| Router
+  Router -- "creative.copy.generate.request" --> Copy
+  Copy -- "creative.copy.generate.done" --> Comp
+  Comp -- "compliance.checked" --> Router
 
-  Router -->|creative.overlay.request| Over
-  Over -->|creative.overlay.done| Select
-  Select -->|creative.ready_for_review| UIApp
+  Router -- "creative.overlay.request" --> Over
+  Over -- "creative.overlay.done" --> Select
+  Select -- "creative.ready_for_review" --> UIApp
 
-  UIApp -->|Approve or Revise| APIGW
-  APIGW -->|creative.approved or creative.revision.requested| Approve
-  Approve -->|creative.generate.request (revise)| Gen
+  UIApp -- "Approve or Revise" --> APIGW
+  APIGW -- "creative.approved or creative.revision.requested" --> Approve
+  Approve -- "creative.generate.request revise" --> Gen
 
-  Gen -->|write| S3
-  Brand -->|write| S3
-  Over -->|write| S3
+  Gen -- "write" --> S3
+  Brand -- "write" --> S3
+  Over -- "write" --> S3
 
-  APIGW -->|write| Mongo
-  Router -->|write| Mongo
-  Copy -->|write| Mongo
-  Comp -->|write| Mongo
-  Select -->|write| Mongo
-  Approve -->|write| Mongo
+  APIGW -- "write" --> Mongo
+  Router -- "write" --> Mongo
+  Copy -- "write" --> Mongo
+  Comp -- "write" --> Mongo
+  Select -- "write" --> Mongo
+  Approve -- "write" --> Mongo
+
 
 
 ```

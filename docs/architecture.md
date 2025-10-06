@@ -1,6 +1,11 @@
-awesome. here’s the architecture doc section exactly as you asked: “how it works (per-locale)” first, the sequence mermaid diagram **right below**, then the containers diagram, then the **Service Responsibilities & I/O matrix**.
+## Architecture Overview
 
----
+This is a microservice, event-driven design built to run on a Kubernetes cluster 
+(docker cluster suggested only for development or test purposes). 
+Each service is independently deployable, horizontally scalable, and communicates via NATS pub/sub 
+for high throughput and low latency. With Kubernetes’ auto-scaling and NATS JetStream for 
+durable streams, this architecture can effortlessly serve millions of users in real time.
+
 
 # How it works (per locale) — quick explainer
 
@@ -128,7 +133,7 @@ flowchart TB
 
 ---
 
-# Service Responsibilities & I/O matrix
+# Service Matrix
 
 > Queue groups ensure only **one** replica handles each message (e.g., `q.image`). Retries: 3 with backoff; final failure → `dlq.creative.<step>`; **Guardian** alerts.
 

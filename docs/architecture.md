@@ -84,8 +84,8 @@ flowchart TB
     Log["run-logger"]
   end
 
-  S3[("MinIO / S3")]
-  Mongo[("MongoDB")]
+  S3[(MinIO / S3)]
+  Mongo[(MongoDB)]
 
   UIApp -->|HTTP| APIGW
   APIGW -->|briefs.ingested| Router
@@ -107,20 +107,21 @@ flowchart TB
   Over -->|creative.overlay.done| Select
   Select -->|creative.ready_for_review| UIApp
 
-  UIApp -- Approve / Revise --> APIGW
-  APIGW -->|creative.approved / creative.revision.requested| Approve
+  UIApp -->|Approve or Revise| APIGW
+  APIGW -->|creative.approved or creative.revision.requested| Approve
   Approve -->|creative.generate.request (revise)| Gen
 
-  Gen --> S3
-  Brand --> S3
-  Over --> S3
+  Gen -->|write| S3
+  Brand -->|write| S3
+  Over -->|write| S3
 
-  APIGW --> Mongo
-  Router --> Mongo
-  Copy --> Mongo
-  Comp --> Mongo
-  Select --> Mongo
-  Approve --> Mongo
+  APIGW -->|write| Mongo
+  Router -->|write| Mongo
+  Copy -->|write| Mongo
+  Comp -->|write| Mongo
+  Select -->|write| Mongo
+  Approve -->|write| Mongo
+
 
 ```
 

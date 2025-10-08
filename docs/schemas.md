@@ -46,6 +46,13 @@ List campaigns with pagination.
 * **Query:** `page`, `page_size`, optional `status`
 * **200 OK:** `{ items: CampaignSummary[], next_page: string|null }`
 
+#### GET `/campaigns/{campaign_id}/status`
+
+Get campaign processing status and progress.
+
+* **200 OK:** `StatusResponse` with progress breakdown by locale
+* **404:** `Error`
+
 #### GET `/variants`
 
 List variants for a campaign (filterable).

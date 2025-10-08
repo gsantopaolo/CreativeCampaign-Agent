@@ -1,97 +1,78 @@
 #!/bin/bash
 
-# Exit immediately if a command exits with a non-zero status.
-set -euo pipefail
+# Creative Campaign - Start Script
+# Starts the infrastructure and API services
 
-# Detect the absolute path of the directory this script resides in
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+set -e
 
-# Source the .env file (expected alongside this script)
-if [ -f "$SCRIPT_DIR/.env" ]; then
-  echo "Sourcing .env file..."
-  source "$SCRIPT_DIR/.env"
-else
-  echo ".env file not found. Please create one based on .env.example. Exiting."
-  exit 1
+echo "══════════════════════════════════════════════════════════"
+echo "  🚀 Starting Creative Campaign Infrastructure"
+echo "══════════════════════════════════════════════════════════"
+echo ""
+
+# Check if .env exists
+if [ ! -f .env ]; then
+    echo "⚠️  .env file not found. Creating from .env.example..."
+    cp .env.example .env
+    echo "✅ .env created. Please edit it with your OPENAI_API_KEY"
+    echo ""
+    read -p "Press Enter to continue or Ctrl+C to edit .env first..."
 fi
 
-# Resolve DATA_PATH relative to deployment directory if given as a relative path
-if [[ "${DATA_PATH}" != /* ]]; then
-  DATA_DIR="$SCRIPT_DIR/${DATA_PATH%/}"
-else
-  DATA_DIR="${DATA_PATH%/}"
-fi
+# Start infrastructure services
+echo "📦 Starting MongoDB, NATS, MinIO, Portainer..."
+docker-compose up -d mongodb nats minio minio-init portainer
 
-# Ensure DATA_PATH seen by docker compose is absolute (required for bind mounts in driver_opts)
-export DATA_PATH="$DATA_DIR"
+echo ""
+echo "⏳ Waiting for services to be healthy..."
+sleep 5
 
-# Function to ensure directory exists and has correct permissions
-ensure_dir() {
-  dir_path=$1
-  # Check if directory exists, create if not
-  if [ ! -d "$dir_path" ]; then
-    echo "Creating directory: $dir_path"
-    mkdir -p "$dir_path"
-  else
-    echo "Directory already exists: $dir_path"
-  fi
-}
+# Wait for MongoDB
+echo "  Checking MongoDB..."
+until docker-compose exec -T mongodb mongosh --eval "db.adminCommand('ping')" > /dev/null 2>&1; do
+    echo "    MongoDB not ready yet..."
+    sleep 2
+done
+echo "  ✅ MongoDB is ready"
 
-# Ensure data directories exist
-ensure_dir "${DATA_DIR}/nats"
-ensure_dir "${DATA_DIR}/qdrant"
-ensure_dir "${DATA_DIR}/postgres"
-ensure_dir "${DATA_DIR}/portainer"
-ensure_dir "${DATA_DIR}/traefik-certs"
+# Wait for NATS
+echo "  Checking NATS..."
+until curl -sf http://localhost:8222/healthz > /dev/null 2>&1; do
+    echo "    NATS not ready yet..."
+    sleep 2
+done
+echo "  ✅ NATS is ready"
 
-# Set permissive permissions so Docker containers can write to host-mounted volumes
-echo "Setting write permissions on data directory tree (${DATA_DIR})"
-chmod -R a+rwx "${DATA_DIR}"
+# Wait for MinIO
+echo "  Checking MinIO..."
+until curl -sf http://localhost:9000/minio/health/live > /dev/null 2>&1; do
+    echo "    MinIO not ready yet..."
+    sleep 2
+done
+echo "  ✅ MinIO is ready"
 
-# Ensure Docker networks exist, if not, create them as external
-check_and_create_network() {
-  network_name=$1
-  if ! docker network ls --format "{{.Name}}" | grep -q "^$network_name$"; then
-    echo "Creating external Docker network: $network_name"
-    docker network create --driver bridge "$network_name"
-  else
-    echo "Docker network already exists: $network_name"
-  fi
-}
+echo ""
+echo "🔨 Building and starting API Gateway..."
+DOCKER_BUILDKIT=0 docker-compose up -d --build api
 
-check_and_create_network "sentinel-frontend-network"
-check_and_create_network "sentinel-backend-network"
-
-# Bring up Docker Compose stacks
-
-# Portainer
-docker compose \
-  -p sentinel-infra \
-  --env-file "$SCRIPT_DIR/.env" \
-  -f "$SCRIPT_DIR/docker-compose.infra.yml" \
-  up -d "$@"
-
-# Combined Base services (NATS, Qdrant, Postgres) and Sentinel AI microservices (including web)
-docker compose \
-  -p sentinel-services \
-  --env-file "$SCRIPT_DIR/.env" \
-  -f "$SCRIPT_DIR/docker-compose.services.yml" \
-  up -d "$@"
-
-echo " "
-echo " "
-echo "                                🕵️‍♂️🤖 Sentinel AI 🕵️‍♂️🤖"
-echo "            deployment initiated. Check Docker logs via Portainer for status."
-echo "   "
-echo "                                   🔗 Links 🔗"
-echo "   "
-echo "  🌎  Sentinel-AI Web UI          http://localhost:8501"
-echo "  🧩  OpenAPI Specs               http://localhost:8000/docs, http://localhost:8000/redoc"
-echo "  🗃️ OpenAPI JSON Specs          http://localhost:8000/openapi.json"
-echo "   "
-echo "  🐳  Portainer Dashboard         http://localhost:${PORTAINER_PORT}"
-echo "  🧠  Qdrant Dashboard            http://localhost:6333/dashboard"
-echo "  🐘  Postgres Dashboard          http://localhost:16543"
-echo "  ✉️  NATS Dashboard              http://localhost:8502"
-echo "   "
-echo " "
+echo ""
+echo "══════════════════════════════════════════════════════════"
+echo "  ✅ Creative Campaign is running!"
+echo "══════════════════════════════════════════════════════════"
+echo ""
+echo "📊 Services:"
+echo "  • API Gateway:    http://localhost:8000"
+echo "  • API Docs:       http://localhost:8000/docs"
+echo "  • API Metrics:    http://localhost:8000/metrics"
+echo "  • MongoDB:        mongodb://localhost:27017"
+echo "  • NATS:           nats://localhost:4222"
+echo "  • NATS Monitor:   http://localhost:8222"
+echo "  • MinIO Console:  http://localhost:9001 (minioadmin/minioadmin)"
+echo "  • Portainer UI:   http://localhost:9000"
+echo ""
+echo "🔍 View logs:"
+echo "  docker-compose logs -f api"
+echo ""
+echo "🛑 Stop services:"
+echo "  ./stop.sh"
+echo ""

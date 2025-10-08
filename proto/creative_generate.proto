@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package creative_campaign;
+
+import "context_enrich.proto";
+
+message CreativeGenerateRequest {
+  string campaign_id = 1;
+  string product_id = 2;
+  string product_name = 3;
+  string product_description = 4;
+  string locale = 5;
+  ContextPack context_pack = 6;
+  int32 num_candidates = 7;
+  int32 seed = 8;
+  int32 revision = 9;
+  string feedback = 10;  // For revisions
+  string correlation_id = 11;
+  string timestamp = 12;
+}
+
+message CreativeGenerateDone {
+  string campaign_id = 1;
+  string product_id = 2;
+  string locale = 3;
+  int32 revision = 4;
+  repeated GeneratedCandidate candidates = 5;
+  string correlation_id = 6;
+  string timestamp = 7;
+}
+
+message GeneratedCandidate {
+  string variant_id = 1;
+  string s3_uri_raw = 2;  // s3://bucket/raw/...
+  int32 seed = 3;
+  string prompt_used = 4;
+  float quality_score = 5;  // Self-evaluation score
+  bool compliant = 6;
+  repeated string compliance_warnings = 7;
+}

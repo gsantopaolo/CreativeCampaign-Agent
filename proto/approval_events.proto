@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package creative_campaign;
+
+message CreativeApproved {
+  string campaign_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string locale = 4;
+  int32 revision = 5;
+  string approved_by = 6;  // User ID or email
+  string correlation_id = 7;
+  string timestamp = 8;
+}
+
+message RevisionRequested {
+  string campaign_id = 1;
+  string product_id = 2;
+  string locale = 3;
+  int32 from_revision = 4;
+  string feedback = 5;  // Free-text feedback
+  string requested_by = 6;  // User ID or email
+  string correlation_id = 7;
+  string timestamp = 8;
+}
+
+message CreativeReadyForReview {
+  string campaign_id = 1;
+  string product_id = 2;
+  string locale = 3;
+  int32 revision = 4;
+  string best_variant_id = 5;
+  repeated string alternate_variant_ids = 6;
+  string correlation_id = 7;
+  string timestamp = 8;
+}

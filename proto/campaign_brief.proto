@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package creative_campaign;
+
+message CampaignBrief {
+  string campaign_id = 1;
+  repeated Product products = 2;
+  repeated string target_locales = 3;
+  Audience audience = 4;
+  Localization localization = 5;
+  BrandCompliance brand = 6;
+  BrandPlacement placement = 7;
+  OutputSpec output = 8;
+  string correlation_id = 9;
+  string timestamp = 10;
+}
+
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message Audience {
+  string region = 1;
+  string audience = 2;
+  int32 age_min = 3;
+  int32 age_max = 4;
+  string interests_text = 5;
+}
+
+message Localization {
+  string message_en = 1;
+  string message_de = 2;
+  string message_fr = 3;
+  string message_it = 4;
+}
+
+message BrandCompliance {
+  string primary_color = 1;
+  string logo_s3_uri = 2;
+  repeated string banned_words_en = 3;
+  repeated string banned_words_de = 4;
+  repeated string banned_words_fr = 5;
+  repeated string banned_words_it = 6;
+  string legal_guidelines = 7;
+}
+
+message BrandPlacement {
+  string logo_position = 1;  // top_left, top_right, bottom_left, bottom_right
+  string overlay_text_position = 2;  // top, center, bottom
+}
+
+message OutputSpec {
+  repeated string aspect_ratios = 1;  // 1x1, 9x16, 16x9
+  string format = 2;  // png, jpeg
+  string s3_prefix = 3;
+}

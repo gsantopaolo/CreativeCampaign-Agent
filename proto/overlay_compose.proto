@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package creative_campaign;
+
+message OverlayComposeRequest {
+  string campaign_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string locale = 4;
+  string s3_uri_branded = 5;  // Input branded image
+  string text = 6;  // Localized copy to overlay
+  string text_position = 7;  // top, center, bottom
+  repeated string aspect_ratios = 8;  // 1x1, 9x16, 16x9
+  string format = 9;  // png, jpeg
+  string correlation_id = 10;
+  string timestamp = 11;
+}
+
+message OverlayComposeDone {
+  string campaign_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string locale = 4;
+  repeated AspectOutput outputs = 5;
+  string correlation_id = 6;
+  string timestamp = 7;
+}
+
+message AspectOutput {
+  string aspect_ratio = 1;  // 1x1, 9x16, 16x9
+  string s3_uri_final = 2;  // s3://bucket/final/1x1/...
+}

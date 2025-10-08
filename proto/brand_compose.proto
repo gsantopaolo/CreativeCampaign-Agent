@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package creative_campaign;
+
+message BrandComposeRequest {
+  string campaign_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string locale = 4;
+  string s3_uri_raw = 5;  // Input raw image
+  string logo_s3_uri = 6;
+  string primary_color = 7;
+  string logo_position = 8;  // top_left, top_right, bottom_left, bottom_right
+  string correlation_id = 9;
+  string timestamp = 10;
+}
+
+message BrandComposeDone {
+  string campaign_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string locale = 4;
+  string s3_uri_branded = 5;  // Output branded image
+  string correlation_id = 6;
+  string timestamp = 7;
+}

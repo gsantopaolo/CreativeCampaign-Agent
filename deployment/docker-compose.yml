@@ -1,0 +1,192 @@
+networks:
+  creative-backend-network:
+    driver: bridge
+
+volumes:
+  mongodb-data:
+  nats-data:
+  minio-data:
+  portainer-data:
+
+services:
+  # ————— MongoDB —————
+  mongodb:
+    image: mongo:7.0
+    container_name: creative-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: creative_campaign
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - creative-backend-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/creative_campaign --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ————— NATS JetStream —————
+  nats:
+    image: nats:2.10-alpine
+    container_name: creative-nats
+    restart: unless-stopped
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP monitoring
+    command: 
+      - "-js"        # Enable JetStream
+      - "-m=8222"    # Enable monitoring
+      - "--store_dir=/data"
+    volumes:
+      - nats-data:/data
+    networks:
+      - creative-backend-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # ————— MinIO (S3-compatible storage) —————
+  minio:
+    image: minio/minio:latest
+    container_name: creative-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - creative-backend-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ————— MinIO Client (Create bucket on startup) —————
+  minio-init:
+    image: minio/mc:latest
+    container_name: creative-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set minio http://minio:9000 minioadmin minioadmin;
+      mc mb minio/creative-assets --ignore-existing;
+      mc anonymous set download minio/creative-assets;
+      echo 'MinIO bucket creative-assets created and configured';
+      exit 0;
+      "
+    networks:
+      - creative-backend-network
+
+  # ————— API Gateway —————
+  api:
+    build:
+      context: ../
+      dockerfile: src/api/Dockerfile
+    container_name: creative-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL}
+      LOG_FORMAT: ${LOG_FORMAT}
+      
+      # MongoDB
+      MONGODB_URL: ${MONGODB_URL}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME}
+      
+      # NATS JetStream
+      NATS_URL: ${NATS_URL}
+      NATS_RECONNECT_TIME_WAIT: ${NATS_RECONNECT_TIME_WAIT}
+      NATS_CONNECT_TIMEOUT: ${NATS_CONNECT_TIMEOUT}
+      NATS_MAX_RECONNECT_ATTEMPTS: ${NATS_MAX_RECONNECT_ATTEMPTS}
+      
+      # Future: S3/MinIO (for worker services)
+      # S3_ENDPOINT_URL: http://minio:9000
+      # S3_ACCESS_KEY_ID: minioadmin
+      # S3_SECRET_ACCESS_KEY: minioadmin
+      # S3_BUCKET_NAME: creative-assets
+      
+      # Future: OpenAI (for worker services)
+      # OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # OPENAI_IMAGE_MODEL: dall-e-3
+    networks:
+      - creative-backend-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  # ————— UI Web App —————
+  # web:
+  #   build:
+  #     context: ../
+  #     dockerfile: src/web/Dockerfile
+  #   container_name: creative-web
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8501:8501"
+  #   environment:
+  #     API_BASE_URL: http://api:8000
+  #   networks:
+  #     - creative-backend-network
+  #   depends_on:
+  #     api:
+  #       condition: service_healthy
+
+  # ————— NATS Monitoring (optional) —————
+  # nats-box:
+  #   image: natsio/nats-box:latest
+  #   container_name: creative-nats-box
+  #   networks:
+  #     - creative-backend-network
+  #   depends_on:
+  #     nats:
+  #       condition: service_healthy
+  #   command: ["tail", "-f", "/dev/null"]
+
+  # ————— Portainer (Container Management UI) —————
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: creative-portainer
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    ports:
+      - "9000:9000"  # Web UI
+      - "9443:9443"  # HTTPS
+    restart: unless-stopped
+    networks:
+      - creative-backend-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9000/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

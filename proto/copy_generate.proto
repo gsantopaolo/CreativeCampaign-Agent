@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package creative_campaign;
+
+import "context_enrich.proto";
+
+message CopyGenerateRequest {
+  string campaign_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string locale = 4;
+  string s3_uri_branded = 5;  // Branded image to analyze
+  ContextPack context_pack = 6;
+  string base_message = 7;  // From brief.localization
+  string correlation_id = 8;
+  string timestamp = 9;
+}
+
+message CopyGenerateDone {
+  string campaign_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string locale = 4;
+  string localized_copy = 5;
+  float cultural_fit_score = 6;  // Self-evaluation
+  bool compliant = 7;
+  repeated string compliance_warnings = 8;
+  string correlation_id = 9;
+  string timestamp = 10;
+}

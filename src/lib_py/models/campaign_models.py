@@ -1,0 +1,309 @@
+"""
+Pydantic models for Creative Campaign MongoDB collections.
+Using motor (async MongoDB driver) + Pydantic for FastAPI integration.
+"""
+
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from pydantic import BaseModel, Field, HttpUrl
+from enum import Enum
+
+
+# ————— Enums —————
+
+class Locale(str, Enum):
+    EN = "en"
+    DE = "de"
+    FR = "fr"
+    IT = "it"
+
+
+class AspectRatio(str, Enum):
+    SQUARE = "1x1"
+    STORY = "9x16"
+    LANDSCAPE = "16x9"
+
+
+class ImageFormat(str, Enum):
+    PNG = "png"
+    JPEG = "jpeg"
+
+
+class LogoPosition(str, Enum):
+    TOP_LEFT = "top_left"
+    TOP_RIGHT = "top_right"
+    BOTTOM_LEFT = "bottom_left"
+    BOTTOM_RIGHT = "bottom_right"
+
+
+class TextPosition(str, Enum):
+    TOP = "top"
+    CENTER = "center"
+    BOTTOM = "bottom"
+
+
+class CampaignStatus(str, Enum):
+    DRAFT = "draft"
+    PROCESSING = "processing"
+    READY_FOR_REVIEW = "ready_for_review"
+    APPROVED = "approved"
+    FAILED = "failed"
+
+
+class VariantStatus(str, Enum):
+    GENERATING = "generating"
+    GENERATED = "generated"
+    BRANDING = "branding"
+    BRANDED = "branded"
+    COPY_GENERATING = "copy_generating"
+    OVERLAYING = "overlaying"
+    READY = "ready"
+    APPROVED = "approved"
+    FAILED = "failed"
+
+
+# ————— Sub-models (embedded in Campaign) —————
+
+class Product(BaseModel):
+    id: str
+    name: str
+    description: str
+
+
+class Audience(BaseModel):
+    region: str
+    audience: str
+    age_min: Optional[int] = None
+    age_max: Optional[int] = None
+    interests_text: Optional[str] = None
+
+
+class Localization(BaseModel):
+    message_en: str
+    message_de: Optional[str] = None
+    message_fr: Optional[str] = None
+    message_it: Optional[str] = None
+
+
+class BrandCompliance(BaseModel):
+    primary_color: Optional[str] = None
+    logo_s3_uri: Optional[str] = None
+    banned_words_en: Optional[List[str]] = []
+    banned_words_de: Optional[List[str]] = []
+    banned_words_fr: Optional[List[str]] = []
+    banned_words_it: Optional[List[str]] = []
+    legal_guidelines: Optional[str] = None
+
+
+class BrandPlacement(BaseModel):
+    logo_position: LogoPosition = LogoPosition.BOTTOM_RIGHT
+    overlay_text_position: TextPosition = TextPosition.BOTTOM
+
+
+class OutputSpec(BaseModel):
+    aspect_ratios: List[AspectRatio] = [AspectRatio.SQUARE, AspectRatio.STORY, AspectRatio.LANDSCAPE]
+    format: ImageFormat = ImageFormat.PNG
+    s3_prefix: str = "outputs/"
+
+
+# ————— Main Campaign Model (MongoDB Collection) —————
+
+class Campaign(BaseModel):
+    """
+    Main campaign document stored in MongoDB 'campaigns' collection.
+    """
+    campaign_id: str = Field(..., alias="_id")  # Use campaign_id as MongoDB _id
+    products: List[Product] = Field(..., min_items=2)
+    target_locales: List[Locale] = Field(..., min_items=1)
+    audience: Audience
+    localization: Localization
+    brand: Optional[BrandCompliance] = None
+    placement: Optional[BrandPlacement] = BrandPlacement()
+    output: OutputSpec = OutputSpec()
+    
+    # Metadata
+    status: CampaignStatus = CampaignStatus.DRAFT
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by: Optional[str] = None  # User ID/email
+    
+    # Tracking
+    correlation_id: Optional[str] = None
+    total_variants: int = 0
+    approved_variants: int = 0
+    
+    class Config:
+        populate_by_name = True
+        json_schema_extra = {
+            "example": {
+                "_id": "fall_2025_promo",
+                "products": [
+                    {"id": "p01", "name": "Serum X", "description": "Vitamin C serum"},
+                    {"id": "p02", "name": "Cream Y", "description": "Night cream"}
+                ],
+                "target_locales": ["en", "de", "fr"],
+                "audience": {
+                    "region": "DACH",
+                    "audience": "Young professionals",
+                    "age_min": 25,
+                    "age_max": 45
+                },
+                "localization": {
+                    "message_en": "Shine every day",
+                    "message_de": "Strahle jeden Tag",
+                    "message_fr": "Brillez chaque jour"
+                },
+                "brand": {
+                    "primary_color": "#FF3355",
+                    "logo_s3_uri": "s3://brand/logo.png"
+                },
+                "output": {
+                    "aspect_ratios": ["1x1", "9x16", "16x9"],
+                    "format": "png",
+                    "s3_prefix": "outputs/"
+                }
+            }
+        }
+
+
+# ————— Variant Model (MongoDB Collection) —————
+
+class AspectOutput(BaseModel):
+    aspect_ratio: AspectRatio
+    s3_uri_final: str
+
+
+class Variant(BaseModel):
+    """
+    Individual creative variant stored in MongoDB 'variants' collection.
+    One per product × locale × revision × candidate.
+    """
+    variant_id: str = Field(..., alias="_id")
+    campaign_id: str = Field(..., index=True)
+    product_id: str = Field(..., index=True)
+    locale: Locale = Field(..., index=True)
+    revision: int = 0
+    
+    # Status tracking
+    status: VariantStatus = VariantStatus.GENERATING
+    is_best: bool = False  # Marked as best by scoring
+    
+    # Image generation
+    s3_uri_raw: Optional[str] = None
+    prompt_used: Optional[str] = None
+    seed: Optional[int] = None
+    quality_score: Optional[float] = None
+    
+    # Branding
+    s3_uri_branded: Optional[str] = None
+    
+    # Copy generation
+    localized_copy: Optional[str] = None
+    cultural_fit_score: Optional[float] = None
+    
+    # Compliance
+    compliant: bool = True
+    compliance_warnings: List[str] = []
+    
+    # Overlay outputs (final)
+    aspect_outputs: List[AspectOutput] = []
+    
+    # Metadata
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Approval
+    approved: bool = False
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    
+    class Config:
+        populate_by_name = True
+
+
+# ————— Context Pack Model (MongoDB Collection) —————
+
+class ContextPack(BaseModel):
+    """
+    Locale-specific context pack stored in MongoDB 'context_packs' collection.
+    Cached per campaign × locale.
+    """
+    context_pack_id: str = Field(..., alias="_id")  # Format: {campaign_id}:{locale}
+    campaign_id: str = Field(..., index=True)
+    locale: Locale
+    
+    # Context content
+    culture_notes: str
+    tone: str
+    dos: List[str] = []
+    donts: List[str] = []
+    banned_words: List[str] = []
+    legal_guidelines: Optional[str] = None
+    
+    # Metadata
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        populate_by_name = True
+
+
+# ————— API Request/Response Models —————
+
+class CampaignCreateRequest(BaseModel):
+    """Request body for POST /campaigns"""
+    campaign_id: str
+    products: List[Product] = Field(..., min_items=2)
+    target_locales: List[Locale] = Field(..., min_items=1)
+    audience: Audience
+    localization: Localization
+    brand: Optional[BrandCompliance] = None
+    placement: Optional[BrandPlacement] = BrandPlacement()
+    output: OutputSpec = OutputSpec()
+
+
+class CampaignCreateResponse(BaseModel):
+    """Response for POST /campaigns"""
+    campaign_id: str
+    status: CampaignStatus
+    message: str
+
+
+class CampaignSummary(BaseModel):
+    """Summary for GET /campaigns list"""
+    campaign_id: str
+    status: CampaignStatus
+    total_variants: int
+    approved_variants: int
+    created_at: datetime
+    products: List[Product]
+    target_locales: List[Locale]
+
+
+class ApprovalRequest(BaseModel):
+    """Request body for POST /campaigns/{campaign_id}/approve"""
+    product_id: str
+    locale: Locale
+    variant_id: str
+    approved_by: str
+
+
+class RevisionRequest(BaseModel):
+    """Request body for POST /campaigns/{campaign_id}/revision"""
+    product_id: str
+    locale: Locale
+    from_revision: int
+    feedback: str
+    requested_by: str
+
+
+class StatusResponse(BaseModel):
+    """Response for GET /campaigns/{campaign_id}/status"""
+    campaign_id: str
+    status: CampaignStatus
+    progress: Dict[str, Any]  # Details per product/locale
+
+
+class ErrorResponse(BaseModel):
+    """Standard error response"""
+    error: str
+    detail: Optional[str] = None

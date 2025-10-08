@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package creative_campaign;
+
+message ContextEnrichRequest {
+  string campaign_id = 1;
+  string locale = 2;
+  string region = 3;
+  string audience = 4;
+  int32 age_min = 5;
+  int32 age_max = 6;
+  string interests_text = 7;
+  repeated string product_names = 8;
+  string correlation_id = 9;
+  string timestamp = 10;
+}
+
+message ContextEnrichReady {
+  string campaign_id = 1;
+  string locale = 2;
+  ContextPack context_pack = 3;
+  string correlation_id = 4;
+  string timestamp = 5;
+}
+
+message ContextPack {
+  string locale = 1;
+  string culture_notes = 2;
+  string tone = 3;
+  repeated string dos = 4;
+  repeated string donts = 5;
+  repeated string banned_words = 6;
+  string legal_guidelines = 7;
+}

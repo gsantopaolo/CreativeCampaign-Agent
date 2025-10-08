@@ -90,6 +90,8 @@ async def startup_event():
     global revision_requested_publisher
     
     logger.info("🚀 API starting up...")
+    logger.info("")
+    logger.info("📡 Connecting to infrastructure...")
     
     # ————— MongoDB Connection —————
     try:
@@ -98,14 +100,14 @@ async def startup_event():
         
         # Test connection
         await mongo_client.admin.command('ping')
-        logger.info(f"✅ Connected to MongoDB: {MONGODB_DB_NAME}")
+        logger.info(f"  ✅ MongoDB connected: {MONGODB_DB_NAME} @ {MONGODB_URL}")
         
         # Create indexes
         await db.campaigns.create_index("campaign_id", unique=True)
         await db.variants.create_index([("campaign_id", 1), ("product_id", 1), ("locale", 1)])
         await db.variants.create_index("is_best")
         await db.context_packs.create_index([("campaign_id", 1), ("locale", 1)], unique=True)
-        logger.info("✅ MongoDB indexes created")
+        logger.info(f"  ✅ MongoDB indexes created")
         
     except Exception as e:
         logger.critical(f"❌ MongoDB connection failed: {e}")
@@ -113,6 +115,13 @@ async def startup_event():
     
     # ————— NATS Publishers —————
     try:
+        # Temporarily suppress JetStreamPublisher logging
+        js_logger = logging.getLogger("JetStreamPublisher")
+        original_level = js_logger.level
+        js_logger.setLevel(logging.WARNING)
+        
+        logger.info(f"  🔌 Connecting to NATS @ {NATS_URL}...")
+        
         briefs_ingested_publisher = JetStreamPublisher(
             subject="briefs.ingested",
             stream_name="creative-briefs-stream",
@@ -120,7 +129,6 @@ async def startup_event():
             **NATS_OPTIONS
         )
         await briefs_ingested_publisher.connect()
-        logger.info("✅ briefs.ingested publisher connected")
         
         context_enrich_publisher = JetStreamPublisher(
             subject="context.enrich.request",
@@ -129,7 +137,6 @@ async def startup_event():
             **NATS_OPTIONS
         )
         await context_enrich_publisher.connect()
-        logger.info("✅ context.enrich publisher connected")
         
         creative_generate_publisher = JetStreamPublisher(
             subject="creative.generate.request",
@@ -138,7 +145,6 @@ async def startup_event():
             **NATS_OPTIONS
         )
         await creative_generate_publisher.connect()
-        logger.info("✅ creative.generate publisher connected")
         
         creative_approved_publisher = JetStreamPublisher(
             subject="creative.approved",
@@ -147,7 +153,6 @@ async def startup_event():
             **NATS_OPTIONS
         )
         await creative_approved_publisher.connect()
-        logger.info("✅ creative.approved publisher connected")
         
         revision_requested_publisher = JetStreamPublisher(
             subject="creative.revision.requested",
@@ -156,7 +161,11 @@ async def startup_event():
             **NATS_OPTIONS
         )
         await revision_requested_publisher.connect()
-        logger.info("✅ creative.revision publisher connected")
+        
+        # Restore logging level
+        js_logger.setLevel(original_level)
+        
+        logger.info(f"  ✅ NATS connected: 5 publishers initialized")
         
     except Exception as e:
         logger.critical(f"❌ NATS connection failed: {e}")
@@ -165,11 +174,14 @@ async def startup_event():
     # ————— Readiness Probe —————
     probe = ReadinessProbe(readiness_time_out=500)
     threading.Thread(target=probe.start_server, daemon=True).start()
-    logger.info("✅ Readiness probe started on :8080/healthz")
+    logger.info("  ✅ Readiness probe started on :8080/healthz")
     
     # ————— Background Task —————
     asyncio.create_task(update_readiness_continuously())
-    logger.info("✅ API startup complete")
+    
+    logger.info("")
+    logger.info("🎉 API startup complete - Ready to accept requests!")
+    logger.info("")
 
 
 @app.on_event("shutdown")

@@ -179,14 +179,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer-data:/data
     ports:
-      - "9000:9000"  # Web UI
+      - "9002:9000"  # Web UI (avoiding MinIO's 9000 and 9001)
       - "9443:9443"  # HTTPS
     restart: unless-stopped
     networks:
       - creative-backend-network
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9000/api/status"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+    # Note: Portainer image is built from scratch without wget/curl
+    # Health monitoring is available in Portainer's own UI

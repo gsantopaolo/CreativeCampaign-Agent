@@ -106,41 +106,53 @@ async def analyze_logo_placement(image_data: bytes, width: int, height: int) -> 
         # Convert image to base64
         base64_image = base64.b64encode(image_data).decode('utf-8')
         
-        prompt = f"""You are an expert brand designer analyzing a product marketing image ({width}x{height}px).
+        prompt = f"""You are an expert brand designer analyzing a product marketing image.
 
-Your task: Determine the OPTIMAL position and size for a brand logo overlay.
+IMAGE DIMENSIONS: {width}x{height} pixels
 
-CRITICAL REQUIREMENTS:
-1. The logo MUST be clearly visible and readable
-2. DO NOT cover faces, products, or key visual elements
-3. Use negative space (empty areas, backgrounds, solid colors)
-4. Consider visual hierarchy - logo should complement, not compete
-5. Ensure sufficient contrast for logo visibility
-6. Logo should feel natural, not forced
+YOUR TASK: Calculate the EXACT position and size for a brand logo overlay using pixel-level precision.
 
-ANALYSIS CHECKLIST:
-- Where are the main subjects/products located?
-- Which corners/edges have the most empty space?
-- What background colors/textures exist in each area?
-- Where would a logo feel balanced and professional?
+STEP-BY-STEP ANALYSIS:
 
-SIZE GUIDANCE:
-- Small logo (0.08-0.12): Subtle branding, minimal space
-- Medium logo (0.12-0.18): Standard branding, balanced presence  
-- Large logo (0.18-0.25): Strong branding, ample space available
+1. IDENTIFY VISUAL ELEMENTS:
+   - Scan the entire image
+   - Note approximate pixel locations of: faces, products, text, decorative elements
+   - Example: "Products occupy pixels 200-800 horizontally, 400-900 vertically"
 
-POSITION GUIDANCE:
-- Provide x_percent and y_percent as the BOTTOM-RIGHT corner of where the logo should be placed
-- Leave 3-5% margin from edges for safety
-- Example: bottom_right corner with margin = x_percent: 0.95, y_percent: 0.95
+2. FIND LARGEST EMPTY AREA:
+   - Identify the biggest continuous space with minimal visual clutter
+   - Estimate its boundaries in pixels (x1, y1, x2, y2)
+   - Calculate available width and height
+   - Example: "Empty area in bottom-right: 700-950px horizontal, 800-950px vertical = 250x150px available"
 
-Respond ONLY with valid JSON (no comments):
+3. CALCULATE LOGO SIZE:
+   - Logo should be 60-80% of the empty area size
+   - Calculate: logo_size_px = min(empty_width, empty_height) * 0.7
+   - Convert to scale: scale = logo_size_px / {width}
+   - Typical range: 0.08-0.25
+   - Example: "Empty area 250x150px → logo 120px → scale = 120/1024 = 0.12"
+
+4. CALCULATE EXACT POSITION (CRITICAL):
+   - Find CENTER of empty area: center_x = (x1+x2)/2, center_y = (y1+y2)/2
+   - Logo bottom-right corner: x = center_x + (logo_size/2), y = center_y + (logo_size/2)
+   - Convert to percentages: x_percent = x/{width}, y_percent = y/{height}
+   - Add 30-50px margin from image edges
+   - Example: "Center at (825,875), logo 120px → bottom-right at (885,935) → x_percent=0.86, y_percent=0.91"
+
+5. VERIFY:
+   - Logo has 30-50px clearance from ALL objects?
+   - Logo doesn't touch image edges (min 30px margin)?
+   - Size is appropriate for the space?
+
+BE PRECISE: Calculate actual pixel coordinates, don't just guess regions!
+
+RESPOND with valid JSON:
 {{
     "position": "bottom_right",
-    "x_percent": 0.85,
-    "y_percent": 0.90,
-    "scale": 0.15,
-    "reasoning": "Specific explanation referencing image content and why this placement works"
+    "x_percent": 0.86,
+    "y_percent": 0.91,
+    "scale": 0.12,
+    "reasoning": "Empty area found at pixels [x1-x2, y1-y2]. Size: [W]x[H]px. Logo: [size]px. Center: ([cx],[cy]). Bottom-right: ([x],[y]). Clearance: [dist]px from [nearest object]."
 }}"""
         
         response = await openai_client.chat.completions.create(

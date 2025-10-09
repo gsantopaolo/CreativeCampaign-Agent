@@ -56,6 +56,21 @@ class ReadinessProbe:
                 self.wfile.write(b"Not Found")
                 self.logger.debug('ReadinessProbeHandler GET /')
 
+        def do_HEAD(self):
+            if self.path == '/healthz':
+                if self.readiness_probe.is_service_ready():
+                    self.send_response(200)
+                    self.end_headers()
+                    self.logger.debug("/healthz HEAD response 200")
+                else:
+                    self.send_response(503)
+                    self.end_headers()
+                    self.logger.error(f"❌ /healthz HEAD response 503 - service not ready")
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.logger.debug('ReadinessProbeHandler HEAD /')
+
     def start_server(self):
         try:
             self.logger.info("Initializing readiness probe server")

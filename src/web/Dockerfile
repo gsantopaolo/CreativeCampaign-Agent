@@ -20,6 +20,9 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY src/web/app.py /app/src/web/app.py
 COPY src/lib_py /app/src/lib_py
 
+# Copy default logo
+COPY src/api/logo.png /app/src/web/logo.png
+
 # Set the PYTHONPATH environment variable
 ENV PYTHONPATH="/app"
 

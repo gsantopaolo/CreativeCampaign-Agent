@@ -16,6 +16,7 @@ services:
     restart: unless-stopped
     ports:
       - "27017:27017"
+    command: ["mongod", "--quiet", "--logpath", "/dev/null"]
     environment:
       MONGO_INITDB_DATABASE: creative_campaign
     volumes:
@@ -23,7 +24,7 @@ services:
     networks:
       - creative-backend-network
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/creative_campaign --quiet
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -93,6 +94,43 @@ services:
     networks:
       - creative-backend-network
 
+  # ————— MongoDB Express (Web UI for MongoDB) —————
+  mongo-express:
+    image: mongo-express:latest
+    container_name: creative-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - creative-backend-network
+
+  # ————— NATS NUI (Web UI for NATS) —————
+  nats-nui:
+    image: ghcr.io/nats-nui/nui:latest
+    container_name: creative-nats-nui
+    restart: unless-stopped
+    ports:
+      - "31311:31311"
+    environment:
+      NATS_URL: nats://nats:4222
+      NATS_MONITORING_URL: http://nats:8222
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - creative-backend-network
+    logging:
+      driver: "none"
+    # Access at: http://localhost:31311
+
   # ————— API Gateway —————
   api:
     build:
@@ -117,11 +155,11 @@ services:
       NATS_CONNECT_TIMEOUT: ${NATS_CONNECT_TIMEOUT}
       NATS_MAX_RECONNECT_ATTEMPTS: ${NATS_MAX_RECONNECT_ATTEMPTS}
       
-      # Future: S3/MinIO (for worker services)
-      # S3_ENDPOINT_URL: http://minio:9000
-      # S3_ACCESS_KEY_ID: minioadmin
-      # S3_SECRET_ACCESS_KEY: minioadmin
-      # S3_BUCKET_NAME: creative-assets
+      # S3/MinIO (for logo uploads)
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      S3_BUCKET_NAME: creative-assets
       
       # Future: OpenAI (for worker services)
       # OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -143,21 +181,23 @@ services:
       start_period: 30s
 
   # ————— UI Web App —————
-  # web:
-  #   build:
-  #     context: ../
-  #     dockerfile: src/web/Dockerfile
-  #   container_name: creative-web
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8501:8501"
-  #   environment:
-  #     API_BASE_URL: http://api:8000
-  #   networks:
-  #     - creative-backend-network
-  #   depends_on:
-  #     api:
-  #       condition: service_healthy
+  web:
+    build:
+      context: ../
+      dockerfile: src/web/Dockerfile
+    container_name: creative-web
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      API_BASE_URL: http://api:8000
+      LOG_LEVEL: INFO
+      LOG_FORMAT: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    networks:
+      - creative-backend-network
+    depends_on:
+      api:
+        condition: service_healthy
 
   # ————— NATS Monitoring (optional) —————
   # nats-box:
@@ -186,3 +226,146 @@ services:
       - creative-backend-network
     # Note: Portainer image is built from scratch without wget/curl
     # Health monitoring is available in Portainer's own UI
+
+  # ————— Context Enricher Service —————
+  # Scale with: docker-compose up -d --scale context-enricher=3
+  context-enricher:
+    build:
+      context: ../
+      dockerfile: src/context_enricher/Dockerfile
+    container_name: creative-context-enricher
+    restart: unless-stopped
+    networks:
+      - creative-backend-network
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=creative_campaign
+      - NATS_URL=nats://nats:4222
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_TEXT_MODEL=${OPENAI_TEXT_MODEL:-gpt-4o-mini}
+      - OPENAI_IMAGE_MODEL=${OPENAI_IMAGE_MODEL:-dall-e-2}
+      - LOG_LEVEL=INFO
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1  # Default, can scale up with --scale flag
+
+  # ————— Image Generator Service —————
+  # Generates images using DALL-E based on creative content
+  image-generator:
+    build:
+      context: ../
+      dockerfile: src/image_generator/Dockerfile
+    container_name: creative-image-generator
+    restart: unless-stopped
+    networks:
+      - creative-backend-network
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=creative_campaign
+      - NATS_URL=nats://nats:4222
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_IMAGE_MODEL=${OPENAI_IMAGE_MODEL:-dall-e-3}
+      - OPENAI_IMAGE_QUALITY=${OPENAI_IMAGE_QUALITY:-standard}
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_ACCESS_KEY_ID=minioadmin
+      - S3_SECRET_ACCESS_KEY=minioadmin
+      - S3_BUCKET_NAME=creative-assets
+      - LOG_LEVEL=INFO
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1
+
+  # ————— Brand Composer Service —————
+  # Adds brand elements (logo, colors) to generated images
+  brand-composer:
+    build:
+      context: ../
+      dockerfile: src/brand_composer/Dockerfile
+    container_name: creative-brand-composer
+    restart: unless-stopped
+    networks:
+      - creative-backend-network
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=creative_campaign
+      - NATS_URL=nats://nats:4222
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_TEXT_MODEL=${OPENAI_TEXT_MODEL:-gpt-4o-mini}
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_EXTERNAL_ENDPOINT_URL=http://localhost:9000
+      - S3_ACCESS_KEY_ID=minioadmin
+      - S3_SECRET_ACCESS_KEY=minioadmin
+      - S3_BUCKET_NAME=creative-assets
+      - LOGO_SIZE_PERCENT=0.15
+      - LOGO_MARGIN_PERCENT=0.03
+      - LOG_LEVEL=INFO
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1
+
+  # ————— Creative Generator Service —————
+  # Converts enriched context into creative content
+  # Scale with: docker-compose up -d --scale creative-generator=2
+  creative-generator:
+    build:
+      context: ../
+      dockerfile: src/creative_generator/Dockerfile
+    container_name: creative-generator
+    restart: unless-stopped
+    networks:
+      - creative-backend-network
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=creative_campaign
+      - NATS_URL=nats://nats:4222
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_TEXT_MODEL=${OPENAI_TEXT_MODEL:-gpt-4o-mini}
+      - OPENAI_IMAGE_MODEL=${OPENAI_IMAGE_MODEL:-dall-e-2}
+      - LOG_LEVEL=INFO
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1  # Default, can scale up with --scale flag

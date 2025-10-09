@@ -11,10 +11,12 @@ import uuid
 from typing import List, Optional
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, UploadFile, File
 from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
+import boto3
+from botocore.client import Config
 
 from src.lib_py.models.campaign_models import (
     Campaign, Variant, ContextPack,
@@ -22,7 +24,7 @@ from src.lib_py.models.campaign_models import (
     CampaignSummary, StatusResponse,
     ApprovalRequest, RevisionRequest,
     CampaignStatus, VariantStatus, Locale,
-    ErrorResponse
+    ErrorResponse, Product
 )
 from src.lib_py.middlewares.jetstream_publisher import JetStreamPublisher
 from src.lib_py.middlewares.readiness_probe import ReadinessProbe
@@ -48,6 +50,14 @@ MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "creative_campaign")
 
 mongo_client: Optional[AsyncIOMotorClient] = None
 db = None
+
+# ————— S3/MinIO Setup —————
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY_ID", "minioadmin")
+S3_SECRET_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "minioadmin")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "creative-assets")
+
+s3_client = None
 
 # ————— NATS JetStream Setup —————
 NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
@@ -83,8 +93,8 @@ async def update_readiness_continuously(interval_seconds: int = 10):
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize MongoDB, NATS publishers, and readiness probe."""
-    global mongo_client, db, probe
+    """Initialize MongoDB, NATS publishers, S3, and readiness probe."""
+    global mongo_client, db, probe, s3_client
     global briefs_ingested_publisher, context_enrich_publisher
     global creative_generate_publisher, creative_approved_publisher
     global revision_requested_publisher
@@ -102,8 +112,7 @@ async def startup_event():
         await mongo_client.admin.command('ping')
         logger.info(f"  ✅ MongoDB connected: {MONGODB_DB_NAME} @ {MONGODB_URL}")
         
-        # Create indexes
-        await db.campaigns.create_index("campaign_id", unique=True)
+        # Create indexes (_id is already unique by default, no need for campaign_id index)
         await db.variants.create_index([("campaign_id", 1), ("product_id", 1), ("locale", 1)])
         await db.variants.create_index("is_best")
         await db.context_packs.create_index([("campaign_id", 1), ("locale", 1)], unique=True)
@@ -112,6 +121,27 @@ async def startup_event():
     except Exception as e:
         logger.critical(f"❌ MongoDB connection failed: {e}")
         raise RuntimeError(f"MongoDB connection failed: {e}")
+    
+    # ————— S3/MinIO Connection —————
+    try:
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=S3_ENDPOINT_URL,
+            aws_access_key_id=S3_ACCESS_KEY,
+            aws_secret_access_key=S3_SECRET_KEY,
+            config=Config(signature_version='s3v4'),
+            region_name='us-east-1'
+        )
+        # Test connection by checking if bucket exists
+        try:
+            s3_client.head_bucket(Bucket=S3_BUCKET_NAME)
+        except:
+            # Create bucket if it doesn't exist
+            s3_client.create_bucket(Bucket=S3_BUCKET_NAME)
+        logger.info(f"  ✅ S3 client initialized: {S3_BUCKET_NAME} @ {S3_ENDPOINT_URL}")
+    except Exception as e:
+        logger.warning(f"  ⚠️  S3 initialization failed: {e}")
+        # Don't fail startup, just log warning
     
     # ————— NATS Publishers —————
     try:
@@ -132,7 +162,7 @@ async def startup_event():
         
         context_enrich_publisher = JetStreamPublisher(
             subject="context.enrich.request",
-            stream_name="creative-context-stream",
+            stream_name="context-request-stream",  # Separate stream for requests
             message_type="ContextEnrichRequest",
             **NATS_OPTIONS
         )
@@ -318,8 +348,9 @@ async def create_campaign(request: CampaignCreateRequest):
             correlation_id=correlation_id
         )
         
-        # Save to MongoDB
+        # Save to MongoDB (_id field is the campaign_id)
         campaign_dict = campaign.model_dump(by_alias=True)
+        campaign_dict["_id"] = request.campaign_id  # Explicitly set MongoDB _id
         await db.campaigns.insert_one(campaign_dict)
         logger.info(f"✅ Campaign {request.campaign_id} saved to MongoDB")
         
@@ -375,12 +406,8 @@ async def create_campaign(request: CampaignCreateRequest):
                 s3_prefix=campaign.output.s3_prefix
             ))
         
-        await briefs_ingested_publisher.publish(
-            subject="briefs.ingested",
-            data=brief_pb.SerializeToString(),
-            headers={"correlation_id": correlation_id}
-        )
-        logger.info(f"📤 Published briefs.ingested for {request.campaign_id}")
+        await briefs_ingested_publisher.publish(brief_pb)
+        logger.info(f"📤 Published briefs.ingested for {request.campaign_id} (correlation: {correlation_id})")
         
         # Trigger orchestration (async)
         asyncio.create_task(orchestrate_campaign(campaign, correlation_id))
@@ -424,12 +451,8 @@ async def orchestrate_campaign(campaign: Campaign, correlation_id: str):
                 timestamp=datetime.utcnow().isoformat() + "Z"
             )
             
-            await context_enrich_publisher.publish(
-                subject="context.enrich.request",
-                data=context_request.SerializeToString(),
-                headers={"correlation_id": correlation_id}
-            )
-            logger.info(f"📤 Published context.enrich.request for {campaign.campaign_id}:{locale.value}")
+            await context_enrich_publisher.publish(context_request)
+            logger.info(f"📤 Published context.enrich.request for {campaign.campaign_id}:{locale.value} (correlation: {correlation_id})")
         
         logger.info(f"✅ Orchestration triggered for {campaign.campaign_id}")
         
@@ -518,6 +541,128 @@ async def get_campaign_status(campaign_id: str):
         status=CampaignStatus(campaign_doc["status"]),
         progress=progress
     )
+
+
+@app.get("/campaigns/{campaign_id}/context-packs")
+async def get_campaign_context_packs(campaign_id: str):
+    """Get context packs for a campaign."""
+    cursor = db.context_packs.find({"campaign_id": campaign_id})
+    context_packs = await cursor.to_list(length=100)
+    
+    # Convert ObjectId to string for JSON serialization
+    for pack in context_packs:
+        if "_id" in pack:
+            pack["_id"] = str(pack["_id"])
+    
+    return context_packs
+
+
+@app.get("/campaigns/{campaign_id}/creatives")
+async def get_campaign_creatives(campaign_id: str):
+    """Get generated creatives for a campaign."""
+    cursor = db.creatives.find({"campaign_id": campaign_id})
+    creatives = await cursor.to_list(length=100)
+    
+    # Convert ObjectId to string and datetime to ISO format
+    for creative in creatives:
+        if "_id" in creative:
+            creative["_id"] = str(creative["_id"])
+        if "created_at" in creative and hasattr(creative["created_at"], "isoformat"):
+            creative["created_at"] = creative["created_at"].isoformat()
+        if "updated_at" in creative and hasattr(creative["updated_at"], "isoformat"):
+            creative["updated_at"] = creative["updated_at"].isoformat()
+    
+    return creatives
+
+
+@app.get("/campaigns/{campaign_id}/images")
+async def get_campaign_images(campaign_id: str):
+    """Get generated images for a campaign."""
+    cursor = db.images.find({"campaign_id": campaign_id})
+    images = await cursor.to_list(length=100)
+    
+    # Convert ObjectId to string and datetime to ISO format
+    for image in images:
+        if "_id" in image:
+            image["_id"] = str(image["_id"])
+        if "generated_at" in image and hasattr(image["generated_at"], "isoformat"):
+            image["generated_at"] = image["generated_at"].isoformat()
+        if "created_at" in image and hasattr(image["created_at"], "isoformat"):
+            image["created_at"] = image["created_at"].isoformat()
+        if "updated_at" in image and hasattr(image["updated_at"], "isoformat"):
+            image["updated_at"] = image["updated_at"].isoformat()
+    
+    return images
+
+
+@app.get("/campaigns/{campaign_id}/branded-images")
+async def get_campaign_branded_images(campaign_id: str):
+    """Get branded images for a campaign."""
+    cursor = db.branded_images.find({"campaign_id": campaign_id})
+    branded_images = await cursor.to_list(length=100)
+    
+    # Convert ObjectId to string and datetime to ISO format
+    for image in branded_images:
+        if "_id" in image:
+            image["_id"] = str(image["_id"])
+        if "composed_at" in image and hasattr(image["composed_at"], "isoformat"):
+            image["composed_at"] = image["composed_at"].isoformat()
+        if "created_at" in image and hasattr(image["created_at"], "isoformat"):
+            image["created_at"] = image["created_at"].isoformat()
+        if "updated_at" in image and hasattr(image["updated_at"], "isoformat"):
+            image["updated_at"] = image["updated_at"].isoformat()
+    
+    return branded_images
+
+
+@app.post("/upload-logo")
+async def upload_logo(file: UploadFile = File(...)):
+    """
+    Upload a logo file and store it in S3.
+    Returns the S3 URI that can be used in campaign creation.
+    """
+    if not s3_client:
+        raise HTTPException(status_code=503, detail="S3 service not available")
+    
+    # Validate file type
+    allowed_types = ["image/png", "image/jpeg", "image/jpg"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed types: {', '.join(allowed_types)}"
+        )
+    
+    try:
+        # Generate unique filename
+        file_ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
+        unique_filename = f"logos/{uuid.uuid4().hex}.{file_ext}"
+        
+        # Read file content
+        content = await file.read()
+        
+        # Upload to S3
+        s3_client.put_object(
+            Bucket=S3_BUCKET_NAME,
+            Key=unique_filename,
+            Body=content,
+            ContentType=file.content_type
+        )
+        
+        # Generate S3 URI
+        s3_uri = f"s3://{S3_BUCKET_NAME}/{unique_filename}"
+        
+        logger.info(f"✅ Logo uploaded: {s3_uri}")
+        
+        return {
+            "s3_uri": s3_uri,
+            "filename": file.filename,
+            "size": len(content),
+            "content_type": file.content_type
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Logo upload failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
 @app.get("/variants", response_model=List[Variant])

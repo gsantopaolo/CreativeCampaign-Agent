@@ -58,7 +58,7 @@ End-to-end pipeline that turns a **campaign brief** into **localized creatives**
 * **Architecture:** 6 core services + 2 supporting (simplified from 14 via agentic self-evaluation)
 * **GenAI:** **CrewAI agents** for image/copy generation with built-in quality control & compliance
 * **Providers:** OpenAI, Replicate, Stability AI, or custom adapters
-* **Branding:** Separate **BrandComposer** service overlays logo/colors (non-destructive)
+* **Branding:** Separate **BrandComposer** service with **AI-powered logo placement** using GPT-4o-mini vision analysis
 * **Localization:** Per-locale **Context Pack** → agentic generation → culturally-aware copy
 * **Approvals:** Human-in-the-loop via Streamlit; first revision keeps seed, later randomizes
 * **Reliability:** Retries + **DLQ** + **Guardian** for failure monitoring
@@ -71,7 +71,7 @@ End-to-end pipeline that turns a **campaign brief** into **localized creatives**
 1. **Brief submitted** → persisted → `briefs.ingested`.
 2. **Context Pack** built for each target locale: culture notes, tone, do/don’t, legal/banned words, plus audience & product descriptors.
 3. **Image generation** per product×locale: produce **N** candidates using `prompt_base + context_pack`. Upload to `s3://…/raw/`.
-4. **BrandComposer** adds logo/accents; writes `*_branded.*` to `s3://…/branded/`.
+4. **BrandComposer** uses **AI vision analysis** (GPT-4o-mini) to determine optimal logo placement, then adds logo/brand colors; writes `*_branded.*` to `s3://…/branded/`.
 5. **Copy generation** per candidate (uses the **branded image** + context to produce a short localized line).
 6. **Compliance check** (warn-only): banned words & basic legal hints; UI shows warnings.
 7. **Overlay & export**: render text with safe margins/contrast → **1:1, 9:16, 16:9** → `s3://…/final/<aspect>/`.
@@ -96,7 +96,7 @@ See the sequence and containers diagrams in `docs/architecture.md`.
 **Optional / recommended**
 
 * `brand`: `{ primary_color, logo_s3_uri, banned_words_{en|de|fr|it}[], legal_guidelines }`
-* `placement`: `{ logo_position: top_left|top_right|bottom_left|bottom_right, overlay_text_position: top|center|bottom }`
+* `placement`: `{ overlay_text_position: top|center|bottom }` (logo position is **AI-determined** via vision analysis)
 * Generation knobs: `n` candidates per product×locale, seed policy
 * Alert routing overrides for this campaign
 
@@ -165,6 +165,40 @@ See the sequence and containers diagrams in `docs/architecture.md`.
 
 ---
 
+## AI-Powered Logo Placement
+
+The **BrandComposer** service uses **GPT-4o-mini with vision** to intelligently determine optimal logo placement for each generated image:
+
+### How It Works
+
+1. **Image Analysis**: After image generation, the brand composer sends the image to GPT-4o-mini with vision capabilities
+2. **Intelligent Reasoning**: The AI analyzes:
+   - Visual composition and balance
+   - Product feature locations (avoiding coverage)
+   - Negative space availability
+   - Overall aesthetic harmony
+3. **Optimal Placement**: Returns position (top_left, top_right, bottom_left, bottom_right), exact coordinates, scale factor, and reasoning
+4. **Application**: Logo is overlaid at the AI-determined position with appropriate sizing
+
+### Benefits
+
+- **No manual configuration** needed per campaign
+- **Context-aware** placement that adapts to each unique image
+- **Transparent reasoning** logged and displayed in UI
+- **Consistent quality** across all locales and products
+
+### Example Output
+
+```
+🤖 LLM logo placement: bottom_right at (870, 921), scale=0.15
+💡 Reasoning: Placing the logo in the bottom right corner allows for a visually 
+   balanced composition, keeping it away from the woman's face and ensuring it 
+   does not cover any product features. This position utilizes negative space 
+   effectively while maintaining logo visibility.
+```
+
+---
+
 ## Prereqs
 
 * Docker & Docker Compose
@@ -182,6 +216,7 @@ MONGO_URI=mongodb://mongo:27017
 MONGO_DB=creative_automation
 
 S3_ENDPOINT_URL=http://minio:9000
+S3_EXTERNAL_ENDPOINT_URL=http://localhost:9000  # For presigned URLs accessible from browser
 S3_REGION=us-east-1
 S3_ACCESS_KEY_ID=minioadmin
 S3_SECRET_ACCESS_KEY=minioadmin

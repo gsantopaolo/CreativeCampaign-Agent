@@ -56,11 +56,24 @@ echo "🔨 Building and starting API Gateway..."
 DOCKER_BUILDKIT=0 docker-compose up -d --build api
 
 echo ""
+echo "🎨 Building and starting Web UI..."
+DOCKER_BUILDKIT=0 docker-compose up -d --build web
+
+echo ""
+echo "🔄 Building and starting Context Enricher..."
+DOCKER_BUILDKIT=0 docker-compose up -d --build context-enricher
+
+echo ""
+echo "⏳ Waiting for services to start..."
+sleep 3
+
+echo ""
 echo "══════════════════════════════════════════════════════════"
 echo "  ✅ Creative Campaign is running!"
 echo "══════════════════════════════════════════════════════════"
 echo ""
 echo "📊 Services:"
+echo "  • Web UI:         http://localhost:8501 🎨"
 echo "  • API Gateway:    http://localhost:8000"
 echo "  • API Docs:       http://localhost:8000/docs"
 echo "  • API Metrics:    http://localhost:8000/metrics"

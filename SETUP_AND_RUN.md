@@ -80,7 +80,9 @@ This will:
 - Start MongoDB (port 27017)
 - Start NATS JetStream (port 4222, monitor on 8222)
 - Start MinIO (S3-compatible, port 9000, console 9001)
+- Start Portainer (container management, port 9002)
 - Build and start API Gateway (port 8000)
+- Build and start Web UI (port 8501)
 
 ### 3. Verify Services
 
@@ -97,10 +99,13 @@ curl http://localhost:8000/healthz
 
 ### 4. Access Services
 
+- **Web UI**: http://localhost:8501 🎨 **← Start here!**
 - **API**: http://localhost:8000
 - **API Docs (Swagger)**: http://localhost:8000/docs
+- **API Metrics**: http://localhost:8000/metrics
 - **NATS Monitor**: http://localhost:8222
 - **MinIO Console**: http://localhost:9001 (minioadmin/minioadmin)
+- **Portainer UI**: http://localhost:9002
 
 ### 5. Stop Services
 
@@ -171,7 +176,18 @@ python main.py
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 6. Test API
+### 6. Run Web UI Locally (Optional)
+
+```bash
+# In another terminal (with conda env activated)
+conda activate creative-campaign
+cd src/web
+streamlit run app.py
+```
+
+Access Web UI at: http://localhost:8501
+
+### 7. Test API
 
 ```bash
 # In another terminal (with conda env activated)
@@ -181,7 +197,19 @@ python test_api.py
 
 ---
 
-## Testing the API
+## Using the Application
+
+### Primary Interface: Web UI 🎨
+
+The **easiest way** to interact with the system:
+
+1. **Open Web UI**: http://localhost:8501
+2. **Create Campaign**: Click "➕ New Campaign" button
+3. **View Campaigns**: See list with status, products, approvals
+4. **Campaign Details**: Click "View" to see brief, status, variants
+5. **Approve/Revise**: Use approval interface when variants are ready
+
+### Alternative: Direct API Testing
 
 ### Using the Test Script
 

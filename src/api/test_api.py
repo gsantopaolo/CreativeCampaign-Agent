@@ -5,8 +5,54 @@ Run with: python test_api.py
 
 import requests
 import json
+import uuid
+import os
+from datetime import datetime
+
+try:
+    import boto3
+    from botocore.client import Config
+    HAS_BOTO3 = True
+except ImportError:
+    HAS_BOTO3 = False
+    print("⚠️  boto3 not installed. Logo upload will use default S3 URI.")
+
+def generate_campaign_id():
+    """Generate a unique campaign ID with timestamp"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"test_campaign_{timestamp}"
 
 BASE_URL = "http://localhost:8000"
+
+def upload_logo_via_api():
+    """Upload logo.png via API endpoint"""
+    print("Uploading logo via API...")
+    
+    # Get logo file path
+    logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+    
+    if not os.path.exists(logo_path):
+        print(f"  ⚠️  Logo file not found: {logo_path}")
+        return None
+    
+    try:
+        # Upload via API endpoint
+        with open(logo_path, 'rb') as f:
+            files = {'file': ('logo.png', f, 'image/png')}
+            response = requests.post(f"{BASE_URL}/upload-logo", files=files)
+            
+        if response.status_code == 200:
+            result = response.json()
+            logo_s3_uri = result['s3_uri']
+            print(f"  ✅ Logo uploaded via API: {logo_s3_uri}")
+            return logo_s3_uri
+        else:
+            print(f"  ❌ Upload failed: {response.status_code} - {response.text}")
+            return None
+        
+    except Exception as e:
+        print(f"  ❌ Failed to upload logo: {e}")
+        return None
 
 def test_health():
     """Test health endpoint"""
@@ -20,15 +66,25 @@ def test_create_campaign():
     """Test campaign creation"""
     print("Testing POST /campaigns...")
     
+    # Generate a unique campaign ID with a GUID
+    campaign_id = f"test_campaign_{uuid.uuid4().hex[:8]}"
+    
+    # Upload logo via API
+    logo_s3_uri = upload_logo_via_api()
+    
+    if not logo_s3_uri:
+        print("  ⚠️  No logo uploaded, campaign will be created without logo")
+        logo_s3_uri = None
+    
     campaign_data = {
-        "campaign_id": "test_campaign_001",
+        "campaign_id": campaign_id,
         "products": [
             {"id": "p01", "name": "Serum X", "description": "Vitamin C brightening serum"},
             {"id": "p02", "name": "Cream Y", "description": "Deep hydration night cream"}
         ],
-        "target_locales": ["en", "de", "fr"],
+        "target_locales": ["en", "de", "fr", "it"],
         "audience": {
-            "region": "DACH",
+            "region": "Europe",
             "audience": "Young professionals",
             "age_min": 25,
             "age_max": 45
@@ -36,15 +92,19 @@ def test_create_campaign():
         "localization": {
             "message_en": "Shine every day",
             "message_de": "Strahle jeden Tag",
-            "message_fr": "Brillez chaque jour"
+            "message_fr": "Brillez chaque jour",
+            "message_it": "Splendi ogni giorno"
         },
         "brand": {
             "primary_color": "#FF3355",
-            "logo_s3_uri": "s3://brand/logo.png",
-            "banned_words_en": ["free", "miracle"]
+            "logo_s3_uri": logo_s3_uri,
+            "banned_words_en": ["free", "miracle", "cure", "guaranteed", "instant"],
+            "banned_words_de": ["kostenlos", "Wunder", "garantiert", "sofort"],
+            "banned_words_fr": ["gratuit", "miracle", "garanti", "instantané"],
+            "banned_words_it": ["gratis", "miracolo", "garantito", "istantaneo"],
+            "legal_guidelines": "Avoid making medical claims. All statements must be verifiable. No false advertising."
         },
         "placement": {
-            "logo_position": "bottom_right",
             "overlay_text_position": "bottom"
         },
         "output": {
@@ -59,12 +119,13 @@ def test_create_campaign():
         json=campaign_data,
         headers={"Content-Type": "application/json"}
     )
-    
     print(f"  Status: {response.status_code}")
     print(f"  Response: {json.dumps(response.json(), indent=2)}")
     print()
     
-    return response.status_code == 202
+    if response.status_code == 202:
+        return campaign_id  # Return the generated ID for use in other tests
+    return None
 
 def test_list_campaigns():
     """Test campaign listing"""
@@ -83,10 +144,11 @@ def test_get_campaign(campaign_id: str):
     print(f"  Status: {response.status_code}")
     if response.status_code == 200:
         data = response.json()
-        print(f"  Campaign: {data['campaign_id']}")
-        print(f"  Status: {data['status']}")
-        print(f"  Products: {len(data['products'])}")
-        print(f"  Locales: {data['target_locales']}")
+        print(f"  Campaign: {data.get('campaign_id', campaign_id)}")
+        print(f"  Status: {data.get('status', 'unknown')}")
+        print(f"  Products: {len(data.get('products', []))}")
+        print(f"  Locales: {data.get('target_locales', [])}")
+        print(f"  Response: {json.dumps(data, indent=2)}")
     print()
 
 def test_get_status(campaign_id: str):
@@ -117,10 +179,12 @@ if __name__ == "__main__":
         test_list_campaigns()
         
         # Test get specific campaign
-        test_get_campaign("test_campaign_001")
-        
-        # Test status
-        test_get_status("test_campaign_001")
+        # Get the campaign ID from the created campaign
+        campaigns = requests.get(f"{BASE_URL}/campaigns").json()
+        if campaigns:
+            campaign_id = campaigns[0]['campaign_id']
+            test_get_campaign(campaign_id)
+            test_get_status(campaign_id)
     
     print("=" * 60)
     print("Tests complete!")

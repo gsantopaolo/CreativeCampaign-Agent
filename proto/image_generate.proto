@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package creative_campaign;
+
+message ImageGenerateRequest {
+  string campaign_id = 1;
+  string locale = 2;
+  string product_id = 3;
+  string headline = 4;
+  string description = 5;
+  repeated string visual_elements = 6;
+  string correlation_id = 10;
+  string timestamp = 11;
+}
+
+message ImageGenerated {
+  string campaign_id = 1;
+  string locale = 2;
+  string product_id = 3;
+  string image_url = 4;
+  string s3_uri = 5;
+  string prompt_used = 6;
+  string status = 7;
+  string error_message = 8;
+  string correlation_id = 10;
+  string generated_at = 11;
+}

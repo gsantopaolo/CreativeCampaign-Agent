@@ -100,6 +100,10 @@ def render_campaign_list():
     st.title("🎨 Creative Campaign Manager")
     st.markdown("---")
     
+    # Initialize page number in session state
+    if 'campaign_page' not in st.session_state:
+        st.session_state.campaign_page = 1
+    
     # Filters
     col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
     with col1:
@@ -109,7 +113,7 @@ def render_campaign_list():
             index=0
         )
     with col2:
-        page_size = st.selectbox("Items per page", [10, 20, 50], index=1)
+        page_size = st.selectbox("Items per page", [10, 20, 50, 100], index=1)
     with col3:
         if st.button("🔄 Refresh"):
             st.rerun()
@@ -119,7 +123,7 @@ def render_campaign_list():
             st.rerun()
     
     # Fetch campaigns
-    params = {"page": 1, "page_size": page_size}
+    params = {"page": st.session_state.campaign_page, "page_size": page_size}
     if status_filter != "All":
         params["status"] = status_filter
     
@@ -137,7 +141,7 @@ def render_campaign_list():
         return
     
     # Display campaigns as cards
-    st.subheader(f"📋 Campaigns ({len(campaigns)} found)")
+    st.subheader(f"📋 Campaigns (Page {st.session_state.campaign_page}, {len(campaigns)} items)")
     
     for campaign in campaigns:
         with st.container():
@@ -167,6 +171,34 @@ def render_campaign_list():
                     st.rerun()
             
             st.markdown("---")
+    
+    # Pagination controls
+    st.markdown("---")
+    col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+    
+    with col1:
+        if st.button("⏮️ First", disabled=(st.session_state.campaign_page == 1)):
+            st.session_state.campaign_page = 1
+            st.rerun()
+    
+    with col2:
+        if st.button("◀️ Previous", disabled=(st.session_state.campaign_page == 1)):
+            st.session_state.campaign_page -= 1
+            st.rerun()
+    
+    with col3:
+        st.markdown(f"<div style='text-align: center; padding-top: 8px;'>Page {st.session_state.campaign_page}</div>", unsafe_allow_html=True)
+    
+    with col4:
+        if st.button("Next ▶️", disabled=(len(campaigns) < page_size)):
+            st.session_state.campaign_page += 1
+            st.rerun()
+    
+    with col5:
+        # Reset to page 1
+        if st.button("🔄 Reset"):
+            st.session_state.campaign_page = 1
+            st.rerun()
 
 # ————— Page: Create Campaign —————
 def render_create_campaign():
@@ -602,6 +634,23 @@ def render_campaign_status(campaign_id):
     branded_images_resp = make_api_call("GET", f"/campaigns/{campaign_id}/branded-images")
     branded_images = branded_images_resp.json() if branded_images_resp and branded_images_resp.status_code == 200 else []
     
+    # Get final images with text overlay from campaign outputs
+    campaign_resp = make_api_call("GET", f"/campaigns/{campaign_id}")
+    campaign_data = campaign_resp.json() if campaign_resp and campaign_resp.status_code == 200 else {}
+    outputs = campaign_data.get('outputs', {})
+    
+    # Convert outputs to list format for display
+    final_images = []
+    for locale, output_data in outputs.items():
+        if output_data.get('final_image_url'):
+            final_images.append({
+                'locale': locale,
+                'final_image_url': output_data.get('final_image_url'),
+                'final_image_s3_uri': output_data.get('final_image_s3_uri'),
+                'text_overlay_timestamp': output_data.get('text_overlay_timestamp'),
+                'text_placement': output_data.get('text_placement', {})
+            })
+    
     # Display pipeline stages
     st.markdown("### 🔄 Pipeline Stages")
     
@@ -610,8 +659,7 @@ def render_campaign_status(campaign_id):
         {"name": "Creative Generation", "icon": "🎨", "data": creatives, "key": "creative"},
         {"name": "Image Generation", "icon": "🖼️", "data": images, "key": "image"},
         {"name": "Brand Composition", "icon": "🏷️", "data": branded_images, "key": "brand"},
-        {"name": "Copy Generation", "icon": "✍️", "data": [], "key": "copy"},
-        {"name": "Overlay Composition", "icon": "🎭", "data": [], "key": "overlay"}
+        {"name": "Text Overlay (Final)", "icon": "✍️", "data": final_images, "key": "final"}
     ]
     
     for stage in stages:
@@ -715,6 +763,31 @@ def render_campaign_status(campaign_id):
                             st.markdown("**🏷️ Branded Image:**")
                             st.image(branded_image_url, use_column_width=True)
                             st.caption(f"✅ Brand elements applied: Color border + AI-optimized logo placement")
+                    
+                    elif stage['key'] == 'final':
+                        # Display final image with text overlay
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**S3 URI:** {item.get('final_image_s3_uri', 'N/A')[:50]}...")
+                            st.write(f"**Completed At:** {item.get('text_overlay_timestamp', 'N/A')[:19] if item.get('text_overlay_timestamp') else 'N/A'}")
+                        with col2:
+                            text_placement = item.get('text_placement', {})
+                            st.write(f"**Font Size:** {text_placement.get('font_size', 'N/A')}pt")
+                            st.write(f"**Text Color:** {text_placement.get('text_color', 'N/A')}")
+                            st.write(f"**Alignment:** {text_placement.get('alignment', 'N/A')}")
+                            st.write(f"**Background Opacity:** {text_placement.get('background_opacity', 'N/A')}")
+                        
+                        # Display AI reasoning for text placement
+                        if text_placement.get('reasoning'):
+                            st.markdown("**🤖 AI Text Placement Reasoning:**")
+                            st.info(text_placement.get('reasoning'))
+                        
+                        # Display the final image with text overlay
+                        final_image_url = item.get('final_image_url')
+                        if final_image_url:
+                            st.markdown("**✍️ Final Image (with Campaign Message):**")
+                            st.image(final_image_url, use_column_width=True)
+                            st.caption(f"✅ Complete: Logo + Brand Colors + Campaign Message")
                     
                     st.markdown("---")
             else:

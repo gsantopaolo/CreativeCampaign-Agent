@@ -47,6 +47,7 @@ class CampaignStatus(str, Enum):
     PROCESSING = "processing"
     READY_FOR_REVIEW = "ready_for_review"
     APPROVED = "approved"
+    COMPLETED = "completed"
     FAILED = "failed"
 
 
@@ -150,6 +151,10 @@ class Campaign(BaseModel):
     correlation_id: Optional[str] = None
     total_variants: int = 0
     approved_variants: int = 0
+    
+    # Final outputs (added by text overlay service)
+    outputs: Optional[dict] = None
+    completed_at: Optional[datetime] = None
     
     class Config:
         populate_by_name = True

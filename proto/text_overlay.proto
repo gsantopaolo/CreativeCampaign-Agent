@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package text_overlay;
+
+message TextOverlaid {
+  string campaign_id = 1;
+  string locale = 2;
+  string final_image_s3_uri = 3;
+  string final_image_url = 4;
+}

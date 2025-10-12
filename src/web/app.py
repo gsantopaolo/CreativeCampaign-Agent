@@ -228,6 +228,59 @@ def render_create_campaign():
     
     st.markdown("---")
     
+    # Logo upload (OUTSIDE form so checkbox can trigger rerun)
+    st.subheader("🏷️ Logo Configuration")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        use_default_logo = st.checkbox("Use default logo", value=True, key="use_default_logo_cb")
+        
+        logo_s3_uri = None
+        uploaded_logo = None
+        
+        if use_default_logo:
+            # Upload default logo to S3 via API
+            try:
+                with open("src/web/logo.png", "rb") as f:
+                    files = {"file": ("logo.png", f, "image/png")}
+                    upload_resp = make_api_call("POST", "/upload-logo", files=files)
+                    if upload_resp and upload_resp.status_code == 200:
+                        logo_s3_uri = upload_resp.json()["s3_uri"]
+                        st.caption(f"✅ Default logo uploaded: {logo_s3_uri.split('/')[-1]}")
+                    else:
+                        st.error("❌ Failed to upload default logo")
+            except Exception as e:
+                st.error(f"❌ Error uploading default logo: {e}")
+        else:
+            uploaded_logo = st.file_uploader("Upload custom logo (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"], key="custom_logo_uploader")
+            if uploaded_logo:
+                # Upload to S3 via API
+                try:
+                    files = {"file": (uploaded_logo.name, uploaded_logo.getvalue(), uploaded_logo.type)}
+                    upload_resp = make_api_call("POST", "/upload-logo", files=files)
+                    if upload_resp and upload_resp.status_code == 200:
+                        logo_s3_uri = upload_resp.json()["s3_uri"]
+                        st.caption(f"✅ Uploaded: {uploaded_logo.name}")
+                    else:
+                        st.error("❌ Failed to upload logo")
+                except Exception as e:
+                    st.error(f"❌ Error uploading logo: {e}")
+            else:
+                st.info("👆 Please upload a logo file above")
+    
+    with col2:
+        st.markdown("**Preview**")
+        try:
+            if use_default_logo:
+                st.image("src/web/logo.png", width=100)
+            elif uploaded_logo:
+                st.image(uploaded_logo, width=100)
+            else:
+                st.caption("No logo selected")
+        except:
+            st.caption("No preview available")
+    
+    st.markdown("---")
+    
     with st.form("create_campaign_form"):
         # Campaign ID
         campaign_id = st.text_input(
@@ -371,61 +424,11 @@ def render_create_campaign():
         # Brand & Compliance Settings
         st.subheader("🏷️ Brand & Compliance")
         
-        col1, col2, col3 = st.columns([2, 1, 2])
+        col1, col2 = st.columns([1, 2])
         with col1:
             primary_color = st.color_picker("Primary Brand Color", value="#FF3355")
-            
-            # Logo upload
-            st.markdown("**Logo**")
-            use_default_logo = st.checkbox("Use default logo", value=True, key="use_default_logo_cb")
-            
-            logo_s3_uri = None
-            uploaded_logo = None
-            
-            if use_default_logo:
-                # Upload default logo to S3 via API
-                try:
-                    with open("src/web/logo.png", "rb") as f:
-                        files = {"file": ("logo.png", f, "image/png")}
-                        upload_resp = make_api_call("POST", "/upload-logo", files=files)
-                        if upload_resp and upload_resp.status_code == 200:
-                            logo_s3_uri = upload_resp.json()["s3_uri"]
-                            st.caption(f"✅ Default logo uploaded: {logo_s3_uri.split('/')[-1]}")
-                        else:
-                            st.error("❌ Failed to upload default logo")
-                except Exception as e:
-                    st.error(f"❌ Error uploading default logo: {e}")
-            
-            # Always show file uploader when not using default
-            if not use_default_logo:
-                uploaded_logo = st.file_uploader("Upload custom logo", type=["png", "jpg", "jpeg"], key="custom_logo_uploader")
-                if uploaded_logo:
-                    # Upload to S3 via API
-                    try:
-                        files = {"file": (uploaded_logo.name, uploaded_logo.getvalue(), uploaded_logo.type)}
-                        upload_resp = make_api_call("POST", "/upload-logo", files=files)
-                        if upload_resp and upload_resp.status_code == 200:
-                            logo_s3_uri = upload_resp.json()["s3_uri"]
-                            st.caption(f"✅ Uploaded: {uploaded_logo.name}")
-                        else:
-                            st.error("❌ Failed to upload logo")
-                    except Exception as e:
-                        st.error(f"❌ Error uploading logo: {e}")
-                else:
-                    st.warning("⚠️ Please upload a logo file")
         
         with col2:
-            # Show logo preview
-            st.markdown("**Preview**")
-            try:
-                if use_default_logo:
-                    st.image("src/web/logo.png", width=100)
-                elif uploaded_logo:
-                    st.image(uploaded_logo, width=100)
-            except:
-                st.caption("No preview")
-        
-        with col3:
             st.markdown("**AI-Powered Placement**")
             st.info("🤖 Logo position will be automatically determined by AI based on image composition")
             st.markdown("**Text Overlay Position**")

@@ -118,63 +118,72 @@ async def analyze_logo_placement(image_data: bytes, width: int, height: int) -> 
         # Convert image to base64
         base64_image = base64.b64encode(image_data).decode('utf-8')
         
-        prompt = f"""You are an expert brand designer analyzing a product marketing image.
+        prompt = f"""You are an expert brand designer analyzing a product marketing image to find the BEST position for a brand logo.
 
 IMAGE DIMENSIONS: {width}x{height} pixels
 
-YOUR TASK: Find the optimal position and size for a brand logo in the TOP-MIDDLE area of the image.
+CRITICAL CONSTRAINT: Logo MUST be placed in the UPPER HALF of the image (y_percent < 0.50) because campaign text will be placed at the bottom.
 
-FOCUS AREA: TOP-MIDDLE SECTION
-- Analyze ONLY the top 40% of the image (y: 0 to {int(height * 0.4)}px)
-- Focus on the horizontal middle 60% (x: {int(width * 0.2)} to {int(width * 0.8)}px)
-- This is the primary zone for logo placement
+YOUR TASK: Analyze the UPPER HALF of the image and find the optimal position and size for a brand logo that:
+1. Does NOT cover or obscure important visual elements (products, faces, key imagery)
+2. Has good contrast and visibility
+3. Feels natural and professionally placed
+4. Maintains brand prominence without being intrusive
+5. STAYS IN TOP 50% (y_percent must be between 0.05 and 0.45)
 
 STEP-BY-STEP ANALYSIS:
 
-1. SCAN TOP-MIDDLE AREA:
-   - Identify visual elements in the top 40% of the image
-   - Note pixel locations of: products, faces, text, decorative elements
+1. SCAN UPPER HALF (top 50%):
+   - Identify visual elements in y: 0 to {int(height * 0.5)}px
+   - Note pixel locations of: products, faces, text, decorative elements, focal points
    - Find empty/plain areas suitable for logo placement
-   - Example: "Top-left has product at 50-300px, top-right clear at 700-950px"
+   - Consider: top-left, top-center, top-right, middle-left, middle-right
+   - Example: "Product centered at 400-600px, clear space in top-right corner 700-950px"
 
-2. FIND BEST LOGO SPOT IN TOP-MIDDLE:
-   - Look for the largest continuous empty space in the top-middle zone
-   - Prefer areas with plain/solid backgrounds
+2. IDENTIFY BEST LOGO POSITION IN UPPER HALF:
+   - Look for the largest continuous empty space with good visibility
+   - Prefer corners or edges with plain/solid backgrounds
+   - Best positions: top-right, top-left, top-center (all in upper 50%)
+   - Avoid covering faces, products, or key visual elements
    - Estimate boundaries in pixels (x1, y1, x2, y2)
-   - Example: "Clear area at top-center: x=400-600px, y=50-200px"
+   - Example: "Best area: top-right corner x=700-950px, y=50-200px - plain background, good contrast"
 
 3. CALCULATE LOGO SIZE:
-   - Logo should be 10-20% of image width
-   - Calculate: logo_size_px = {width} * scale (where scale is 0.10-0.20)
-   - Smaller logos (0.10-0.12) for busy backgrounds
-   - Larger logos (0.15-0.20) for plain backgrounds
-   - Example: "Plain background → scale=0.15 → logo 154px for 1024px image"
+   - Logo should be 8-18% of image width
+   - Calculate: logo_size_px = {width} * scale (where scale is 0.08-0.18)
+   - Smaller logos (0.08-0.11) for busy images or when placed over textured areas
+   - Medium logos (0.11-0.14) for balanced placement
+   - Larger logos (0.14-0.18) for plain backgrounds with lots of empty space
+   - Example: "Plain background in corner → scale=0.12 → logo 123px for 1024px image"
 
-4. CALCULATE EXACT POSITION:
-   - Find CENTER of the chosen empty area in top-middle
-   - Logo center: center_x, center_y
-   - Ensure 30-50px margin from top edge
-   - Ensure logo stays in top 40% of image
-   - Example: "Center at (512, 100) with 40px top margin"
+4. CALCULATE EXACT POSITION (CENTER POINT):
+   - Find CENTER of the chosen empty area IN THE UPPER HALF
+   - Logo will be centered at: (x_percent, y_percent)
+   - Ensure 30-60px margin from edges
+   - x_percent: 0.0 (left edge) to 1.0 (right edge)
+   - y_percent: 0.05 (near top) to 0.45 (middle) - MUST BE < 0.50
+   - Example: "Top-right corner center at x_percent=0.85, y_percent=0.12"
 
-5. VERIFY:
-   - Logo is in TOP 40% of image? (y < {int(height * 0.4)})
-   - Logo is horizontally centered or near-center?
-   - Logo has clearance from visual elements?
-   - Size is readable but not overwhelming?
+5. VERIFY YOUR CHOICE:
+   - Logo is in UPPER HALF? (y_percent < 0.50) ✓
+   - Logo does NOT cover important visual elements? ✓
+   - Logo has good contrast with background? ✓
+   - Logo size is readable but not overwhelming? ✓
+   - Position feels natural and professional? ✓
+   - Adequate margin from edges (30-60px)? ✓
 
-CRITICAL: Focus on TOP-MIDDLE placement. Calculate precise pixel coordinates!
+CRITICAL: Logo MUST be in top 50% of image. y_percent MUST be less than 0.50.
 
 Respond with a JSON object in this EXACT format:
 {{
-  "position": "top_center",
-  "x_percent": 0.50,
-  "y_percent": 0.15,
-  "scale": 0.15,
-  "reasoning": "detailed explanation with pixel coordinates for TOP-MIDDLE placement"
+  "position": "top_right",
+  "x_percent": 0.85,
+  "y_percent": 0.12,
+  "scale": 0.12,
+  "reasoning": "Detailed explanation: why this position was chosen, what visual elements were avoided, pixel coordinates, and confirmation that y < 50%"
 }}
 
-Return ONLY the JSON object. Logo MUST be in top 40% of image."""        
+Return ONLY the JSON object."""        
         response = await openai_client.chat.completions.create(
             model=OPENAI_TEXT_MODEL,
             messages=[

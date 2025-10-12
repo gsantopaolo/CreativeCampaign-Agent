@@ -34,7 +34,7 @@ st.set_page_config(
 )
 
 # ————— Helper: API Call —————
-def make_api_call(method: str, endpoint: str, data=None, params=None):
+def make_api_call(method: str, endpoint: str, data=None, params=None, files=None):
     """Make API call with error handling"""
     url = f"{API_BASE_URL}{endpoint}"
     logger.info(f"📱 {method} {url}")
@@ -43,7 +43,11 @@ def make_api_call(method: str, endpoint: str, data=None, params=None):
         if method == "GET":
             resp = requests.get(url, params=params, timeout=10)
         elif method == "POST":
-            resp = requests.post(url, json=data, timeout=10)
+            if files:
+                # For file uploads, don't use json parameter
+                resp = requests.post(url, files=files, data=data, timeout=30)
+            else:
+                resp = requests.post(url, json=data, timeout=10)
         else:
             resp = requests.request(method, url, json=data, params=params, timeout=10)
         
@@ -211,6 +215,19 @@ def render_create_campaign():
     
     st.markdown("---")
     
+    # Number of products selector (OUTSIDE form so it can trigger rerun)
+    st.subheader("📦 Products Configuration")
+    num_products = st.number_input(
+        "Number of products (minimum 2)", 
+        min_value=2, 
+        max_value=10, 
+        value=2,
+        key="num_products_input",
+        help="⚠️ Change this number first, then fill in the product details below"
+    )
+    
+    st.markdown("---")
+    
     with st.form("create_campaign_form"):
         # Campaign ID
         campaign_id = st.text_input(
@@ -219,12 +236,11 @@ def render_create_campaign():
             help="Unique identifier for this campaign"
         )
         
-        # Products (minimum 2)
-        st.subheader("📦 Products (Minimum 2)")
-        num_products = st.number_input("Number of products", min_value=2, max_value=10, value=2)
+        # Products fields
+        st.subheader(f"📦 Product Details ({int(num_products)} products)")
         
         products = []
-        for i in range(num_products):
+        for i in range(int(num_products)):
             st.markdown(f"**Product {i+1}**")
             col1, col2 = st.columns(2)
             with col1:
@@ -234,7 +250,7 @@ def render_create_campaign():
                 p_desc = st.text_area(
                     f"Description",
                     key=f"pdesc_{i}",
-                    value=f"Premium product {i+1}",
+                    value=f"Premium beauty product {i+1}",
                     height=80
                 )
             products.append({"id": p_id, "name": p_name, "description": p_desc})
@@ -313,12 +329,32 @@ def render_create_campaign():
                 )
                 
                 # Optional: Brand guidelines
+                default_guidelines = """- Always use positive, empowering language
+- Focus on natural beauty and self-confidence
+- Avoid medical or exaggerated claims
+- Use inclusive imagery and messaging
+- Maintain professional yet approachable tone"""
+                
                 brand_guidelines = st.text_area(
                     "📋 Brand Guidelines (Optional)",
                     key=f"guidelines_{locale}",
-                    value="",
+                    value=default_guidelines,
                     height=80,
                     help="Any brand-specific requirements (colors, fonts, tone, compliance rules)"
+                )
+                
+                # Campaign Message (for text overlay)
+                default_messages = {
+                    "en": "Shine every day with natural radiance",
+                    "de": "Strahle jeden Tag mit natürlicher Ausstrahlung",
+                    "fr": "Brillez chaque jour avec un éclat naturel",
+                    "it": "Splendi ogni giorno con luminosità naturale"
+                }
+                campaign_message = st.text_input(
+                    "💬 Campaign Message (Text Overlay)",
+                    key=f"message_{locale}",
+                    value=default_messages.get(locale, "Shine every day"),
+                    help="This message will appear on the final image"
                 )
                 
                 # Store all configs, we'll filter later based on selected locales
@@ -328,7 +364,8 @@ def render_create_campaign():
                     "age_min": age_min,
                     "age_max": age_max,
                     "creative_brief": creative_brief,
-                    "brand_guidelines": brand_guidelines
+                    "brand_guidelines": brand_guidelines,
+                    "message": campaign_message
                 }
         
         # Brand & Compliance Settings
@@ -340,9 +377,11 @@ def render_create_campaign():
             
             # Logo upload
             st.markdown("**Logo**")
-            use_default_logo = st.checkbox("Use default logo", value=True)
+            use_default_logo = st.checkbox("Use default logo", value=True, key="use_default_logo_cb")
             
             logo_s3_uri = None
+            uploaded_logo = None
+            
             if use_default_logo:
                 # Upload default logo to S3 via API
                 try:
@@ -356,8 +395,10 @@ def render_create_campaign():
                             st.error("❌ Failed to upload default logo")
                 except Exception as e:
                     st.error(f"❌ Error uploading default logo: {e}")
-            else:
-                uploaded_logo = st.file_uploader("Upload custom logo", type=["png", "jpg", "jpeg"])
+            
+            # Always show file uploader when not using default
+            if not use_default_logo:
+                uploaded_logo = st.file_uploader("Upload custom logo", type=["png", "jpg", "jpeg"], key="custom_logo_uploader")
                 if uploaded_logo:
                     # Upload to S3 via API
                     try:
@@ -371,7 +412,7 @@ def render_create_campaign():
                     except Exception as e:
                         st.error(f"❌ Error uploading logo: {e}")
                 else:
-                    st.warning("⚠️ No logo selected")
+                    st.warning("⚠️ Please upload a logo file")
         
         with col2:
             # Show logo preview
@@ -387,10 +428,9 @@ def render_create_campaign():
         with col3:
             st.markdown("**AI-Powered Placement**")
             st.info("🤖 Logo position will be automatically determined by AI based on image composition")
-            overlay_text_position = st.selectbox("Text Overlay Position",
-                                                ["bottom", "top", "center"],
-                                                index=0,
-                                                help="Position for campaign message text")
+            st.markdown("**Text Overlay Position**")
+            st.info("💬 Campaign message will be placed at bottom-center of the image")
+            overlay_text_position = "bottom"  # Fixed position
         
         # Legal & Compliance
         st.markdown("**⚖️ Legal Compliance (Optional)**")
@@ -418,7 +458,7 @@ def render_create_campaign():
         
         legal_guidelines = st.text_area(
             "Legal Guidelines (optional)",
-            value="",
+            value="Avoid making medical claims. All statements must be verifiable. No false advertising. Comply with local cosmetics regulations.",
             height=60,
             help="General legal guidelines for this campaign"
         )
@@ -426,25 +466,24 @@ def render_create_campaign():
         # Output Settings
         st.subheader("📐 Output Settings")
         aspect_ratios = st.multiselect(
-            "Aspect Ratios",
+            "Aspect Ratios*",
             ["1x1 (Square)", "4x5 (Instagram Portrait)", "9x16 (Story)", "16x9 (Landscape)"],
-            default=["1x1 (Square)", "4x5 (Instagram Portrait)"],
-            format_func=lambda x: x
+            default=["1x1 (Square)", "4x5 (Instagram Portrait)", "9x16 (Story)", "16x9 (Landscape)"],
+            format_func=lambda x: x,
+            help="Select all aspect ratios you need for this campaign"
         )
         # Convert display names back to values
         aspect_ratio_map = {
             "1x1 (Square)": "1x1",
             "4x5 (Instagram Portrait)": "4x5",
             "9x16 (Story)": "9x16",
-            "16x9 (Landscape)": "16x9"
+            "16x9 (Landscape)" : "16x9"
         }
         aspect_ratios = [aspect_ratio_map[ar] for ar in aspect_ratios]
         
-        col1, col2 = st.columns(2)
-        with col1:
-            output_format = st.selectbox("Format", ["png", "jpg"], index=0)
-        with col2:
-            s3_prefix = st.text_input("S3 Prefix", value="campaigns/")
+        # Fixed output format and S3 prefix (removed from UI)
+        output_format = "png"
+        s3_prefix = "outputs/"
         
         # Submit
         submitted = st.form_submit_button("🚀 Create Campaign", use_container_width=True)
@@ -481,6 +520,8 @@ def render_create_campaign():
                 localization[f"creative_brief_{locale}"] = config["creative_brief"]
                 if config.get("brand_guidelines"):
                     localization[f"brand_guidelines_{locale}"] = config["brand_guidelines"]
+                if config.get("message"):
+                    localization[f"message_{locale}"] = config["message"]
                 # Also store audience per locale
                 localization[f"audience_{locale}"] = {
                     "region": config["region"],

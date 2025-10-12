@@ -86,7 +86,16 @@ async def generate_creative(context_ready, context_pack):
     logger.info(f"🎨 Generating creative for {campaign_id}:{locale}")
     
     try:
+        # Fetch campaign to get brand guidelines
+        campaign = await db.campaigns.find_one({"_id": campaign_id})
+        brand_guidelines = ""
+        if campaign:
+            brand_guidelines_key = f"brand_guidelines_{locale}"
+            brand_guidelines = campaign.get("localization", {}).get(brand_guidelines_key, "")
+        
         # Prepare the prompt for creative generation
+        brand_section = f"\nBrand Guidelines: {brand_guidelines}" if brand_guidelines else ""
+        
         prompt = f"""Based on the following context, generate creative content:
         
         Campaign ID: {campaign_id}
@@ -97,7 +106,7 @@ async def generate_creative(context_ready, context_pack):
         Do's: {', '.join(context_pack.dos)}
         Don'ts: {', '.join(context_pack.donts)}
         Banned Words: {', '.join(context_pack.banned_words)}
-        Legal Guidelines: {context_pack.legal_guidelines}
+        Legal Guidelines: {context_pack.legal_guidelines}{brand_section}
         
         Respond with a JSON object in this EXACT format:
         {{

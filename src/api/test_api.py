@@ -84,20 +84,30 @@ def test_create_campaign():
         ],
         "target_locales": ["en", "de", "fr", "it"],
         "audience": {
-            "region": "Europe",
+            "region": "Global",
             "audience": "Young professionals",
             "age_min": 25,
             "age_max": 45
         },
         "localization": {
-            "message_en": "Shine every day",
-            "message_de": "Strahle jeden Tag",
-            "message_fr": "Brillez chaque jour",
-            "message_it": "Splendi ogni giorno"
+            "creative_brief_en": "Create premium beauty product images featuring natural ingredients, soft lighting, and minimalist aesthetic. Show elegant packaging with botanical elements.",
+            "creative_brief_de": "Erstellen Sie hochwertige Beauty-Produktbilder mit natürlichen Inhaltsstoffen, weichem Licht und minimalistischer Ästhetik. Zeigen Sie elegante Verpackungen mit botanischen Elementen.",
+            "creative_brief_fr": "Créez des images de produits de beauté haut de gamme mettant en valeur des ingrédients naturels, un éclairage doux et une esthétique minimaliste. Montrez un emballage élégant avec des éléments botaniques.",
+            "creative_brief_it": "Crea immagini di prodotti di bellezza premium con ingredienti naturali, illuminazione soffusa ed estetica minimalista. Mostra packaging elegante con elementi botanici.",
+            "brand_guidelines_en": "- Always use positive, empowering language\n- Focus on natural beauty and self-confidence\n- Avoid medical or exaggerated claims\n- Use inclusive imagery and messaging\n- Maintain professional yet approachable tone",
+            "brand_guidelines_de": "- Verwenden Sie immer positive, stärkende Sprache\n- Fokus auf natürliche Schönheit und Selbstvertrauen\n- Vermeiden Sie medizinische oder übertriebene Behauptungen\n- Verwenden Sie inklusive Bilder und Botschaften\n- Behalten Sie einen professionellen, aber zugänglichen Ton bei",
+            "brand_guidelines_fr": "- Utilisez toujours un langage positif et valorisant\n- Concentrez-vous sur la beauté naturelle et la confiance en soi\n- Évitez les affirmations médicales ou exagérées\n- Utilisez des images et des messages inclusifs\n- Maintenez un ton professionnel mais accessible",
+            "brand_guidelines_it": "- Usa sempre un linguaggio positivo e potenziante\n- Concentrati sulla bellezza naturale e l'autostima\n- Evita affermazioni mediche o esagerate\n- Usa immagini e messaggi inclusivi\n- Mantieni un tono professionale ma accessibile",
+            "audience_en": {"region": "North America", "audience": "Young professionals", "age_min": 25, "age_max": 45},
+            "audience_de": {"region": "Germany", "audience": "Berufstätige Erwachsene", "age_min": 25, "age_max": 45},
+            "audience_fr": {"region": "France", "audience": "Jeunes professionnels", "age_min": 25, "age_max": 45},
+            "audience_it": {"region": "Italy", "audience": "Giovani professionisti", "age_min": 25, "age_max": 45},
+            "message_en": "Shine every day with natural radiance",
+            "message_de": "Strahle jeden Tag mit natürlicher Ausstrahlung",
+            "message_fr": "Brillez chaque jour avec un éclat naturel",
+            "message_it": "Splendi ogni giorno con luminosità naturale"
         },
-        "brand": {
-            "primary_color": "#FF3355",
-            "logo_s3_uri": logo_s3_uri,
+        "compliance": {
             "banned_words_en": ["free", "miracle", "cure", "guaranteed", "instant"],
             "banned_words_de": ["kostenlos", "Wunder", "garantiert", "sofort"],
             "banned_words_fr": ["gratuit", "miracle", "garanti", "instantané"],

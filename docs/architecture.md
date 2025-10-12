@@ -1,74 +1,48 @@
-# Architecture Overview
+# 🏗️ Architecture Overview
 
 ## Design Philosophy
 
-This is a **right-sized microservice**, event-driven design built for Kubernetes deployment 
-(Docker Compose for development). 
+Right-sized microservices with event-driven communication. Built for production scale, tested with Docker Compose.
 
 **Key principles**:
-- ✅ **Event-driven**: NATS JetStream for decoupled, scalable communication
-- ✅ **Agentic self-evaluation**: CrewAI agents reduce service count through built-in quality control
-- ✅ **Proven patterns**: 70% reused from [Sentinel-AI](../samples/sentinel-AI) (NATS, FastAPI, health checks)
-- ✅ **Production-ready POC**: Shows how a 2-day customer deployment would look at scale
+- 🔄 **Event-driven**: NATS JetStream for reliable, decoupled messaging
+- 🤖 **AI-powered**: OpenAI DALL-E 3 for images, GPT-4o-mini for text & vision
+- 🎯 **Single responsibility**: Each service does one thing well
+- ✅ **Production-ready**: Health checks, retries, structured logging
 
-Each service is independently deployable, horizontally scalable, and communicates via NATS pub/sub 
-for high throughput and low latency. With Kubernetes auto-scaling and NATS JetStream for 
-durable streams, this architecture can serve thousands of campaigns daily.
+Each service scales independently and communicates via NATS pub/sub for high throughput and low latency. With Kubernetes auto-scaling and NATS JetStream, this architecture handles thousands of campaigns daily.
 
 > **For evaluators**: See [why-microservices.md](why-microservices.md) for architectural trade-offs and [simplified-alternative.md](simplified-alternative.md) for a monolithic approach.
 
 ---
 
-## Simplified Architecture: 6 Core Services + 2 Supporting
-
-**Why only 6 services vs. 14?**
-- **Agentic self-evaluation**: Image/copy generators include quality control and compliance (no separate validators)
-- **API orchestration**: api-gateway handles workflow coordination (no separate orchestrator)
-- **Embedded approvals**: Revision logic inside agentic image-generator (no separate handler)
+## Architecture: 5 Worker Services + API + UI
 
 ### Core Services
 
-1. **api-gateway** - REST API + orchestration logic
-2. **context-enricher** - Locale-specific context packs
-3. **image-generator** - Agentic: generate → evaluate → comply → retry
-4. **brand-composer** - Logo/color overlay (non-destructive)
-5. **copy-generator** - Agentic localized copy with compliance
-6. **overlay-composer** - Text rendering + multi-aspect export
+1. **api** - FastAPI REST API + orchestration
+2. **web** - Streamlit UI for campaign creation & monitoring
 
-### Supporting Services
+### Worker Services (NATS Event-Driven)
 
-7. **guardian-dlq** - Failure monitoring & alerts
-8. **ui-webapp** - Streamlit UI for briefs, approvals, preview
+3. **context-enricher** - Builds locale-specific context packs
+4. **creative-generator** - Generates creative content using GPT-4o-mini
+5. **image-generator** - Generates images using DALL-E 3
+6. **brand-composer** - Adds logo using AI-powered placement (GPT-4o-mini vision)
+7. **text-overlay** - Adds text and exports multiple aspect ratios
 
 ---
 
-## How It Works (Per Locale)
+## 🔄 How It Works (Per Locale)
 
-1. **Create/update brief** in Streamlit → FastAPI validates & stores → emits **`briefs.ingested`**
-2. **API-gateway** (orchestration logic) sends **`context.enrich.request`** per locale
-3. **Context-enricher** builds **Context Pack** (culture, tone, legal, banned words) → **`context.enrich.ready`**
-4. **API-gateway** sends **`creative.generate.request`** per product×locale with context
-5. **Image-generator** (CrewAI agentic):
-   - Generates N candidates
-   - Self-evaluates quality
-   - Checks compliance (banned words, legal)
-   - Retries if needed
-   - Publishes **`creative.generate.done`** → S3 `/raw/`
-6. **API-gateway** triggers **`creative.brand.compose.request`**
-7. **Brand-composer** adds logo/colors → `*_branded.*` to S3 `/branded/` → **`creative.brand.compose.done`**
-8. **API-gateway** triggers **`creative.copy.generate.request`**
-9. **Copy-generator** (CrewAI agentic):
-   - Generates localized copy using branded image + context
-   - Self-evaluates cultural fit
-   - Checks compliance
-   - Publishes **`creative.copy.generate.done`**
-10. **API-gateway** triggers **`creative.overlay.request`**
-11. **Overlay-composer** renders text → exports 1:1, 9:16, 16:9 → **`creative.overlay.done`**
-12. **UI** shows results → user **Approves** or **Requests changes**
-13. **API-gateway** handles approval:
-    - **Approved**: Finalizes in MongoDB
-    - **Revision**: Re-publishes **`creative.generate.request`** (first revision keeps seed, later randomizes)
-14. Any step failing after retries → **`dlq.creative.<step>`** → **Guardian** alerts ops
+1. 📝 **User creates campaign** in Streamlit → API validates & stores → publishes `briefs.ingested`
+2. 🌍 **Context enricher** builds locale-specific context (culture, tone, legal) → `context.enrich.ready`
+3. ✍️ **Creative generator** writes campaign content using GPT-4o-mini → `creative.generate.done`
+4. 🎨 **Image generator** creates 4 images (one per aspect ratio) using DALL-E 3 → `image.generated`
+5. 🎯 **Brand composer** uses AI vision to find perfect logo spot, adds branding → `brand.composed`
+6. 📐 **Text overlay** adds campaign text, exports all formats → `text.overlay.done`
+7. ✅ **User reviews** in UI → Approves or requests changes
+8. 🔁 **Automatic retries** if any step fails (up to 3 times)
 
 ---
 
@@ -78,36 +52,35 @@ durable streams, this architecture can serve thousands of campaigns daily.
 sequenceDiagram
   autonumber
   participant UI as UI (Streamlit)
-  participant API as api-gateway
-  participant C as context-enricher
-  participant G as image-generator (Agentic)
-  participant B as brand-composer
-  participant T as copy-generator (Agentic)
-  participant O as overlay-composer
+  participant API as API (FastAPI)
+  participant CE as context-enricher
+  participant CG as creative-generator
+  participant IG as image-generator
+  participant BC as brand-composer
+  participant TO as text-overlay
 
-  UI->>API: Create/Update Brief
-  API->>C: context.enrich.request (locale)
-  C-->>API: context.enrich.ready
+  UI->>API: Create Campaign
+  API->>CE: context.enrich.request (locale)
+  CE-->>API: context.enrich.ready
   
-  API->>G: creative.generate.request (product×locale + context)
-  Note over G: Generate → Self-evaluate → Comply → Retry loop
-  G-->>API: creative.generate.done (best candidates)
+  API->>CG: creative.generate.request (product×locale + context)
+  Note over CG: Generate content via GPT-4o-mini
+  CG-->>API: creative.generate.done
   
-  API->>B: creative.brand.compose.request
-  B-->>API: creative.brand.compose.done (branded)
+  API->>IG: image.generate.request
+  Note over IG: Generate 4 aspect ratios via DALL-E 3
+  IG-->>API: image.generated (×4)
   
-  API->>T: creative.copy.generate.request (per branded candidate)
-  Note over T: Generate copy → Self-evaluate → Comply
-  T-->>API: creative.copy.generate.done (localized copy)
+  API->>BC: brand.compose.request
+  Note over BC: AI vision analyzes placement + adds logo
+  BC-->>API: brand.composed
   
-  API->>O: creative.overlay.request (1x1, 9x16, 16x9)
-  O-->>API: creative.overlay.done (finals)
+  API->>TO: text.overlay.request
+  Note over TO: Add text + export final assets
+  TO-->>API: text.overlay.done
   
-  API-->>UI: creative.ready_for_review
-  UI->>API: Approve | Request changes (feedback)
-  
-  Note over API,G: On revision: API re-publishes generate.request
-  Note over API,G: First revision: keep seed | Later: randomize
+  API-->>UI: Campaign ready for review
+  UI->>API: Approve | Request changes
 ```
 
 ---
@@ -126,14 +99,10 @@ flowchart TB
 
   subgraph Workers["Worker Services (NATS)"]
     Ctx["context-enricher"]
-    Gen["image-generator<br/>(CrewAI Agentic)"]
-    Brand["brand-composer"]
-    Copy["copy-generator<br/>(CrewAI Agentic)"]
-    Over["overlay-composer"]
-  end
-  
-  subgraph Support["Supporting"]
-    Guard["guardian-dlq"]
+    CG["creative-generator"]
+    IG["image-generator<br/>(DALL-E 3)"]
+    BC["brand-composer<br/>(AI Logo Placement)"]
+    TO["text-overlay"]
   end
 
   subgraph Storage["Storage"]
@@ -146,145 +115,42 @@ flowchart TB
   APIGW -- "context.enrich.request" --> Ctx
   Ctx -- "context.enrich.ready" --> APIGW
   
-  APIGW -- "creative.generate.request" --> Gen
-  Gen -- "creative.generate.done" --> APIGW
+  APIGW -- "creative.generate.request" --> CG
+  CG -- "creative.generate.done" --> APIGW
   
-  APIGW -- "creative.brand.compose.request" --> Brand
-  Brand -- "creative.brand.compose.done" --> APIGW
+  APIGW -- "image.generate.request" --> IG
+  IG -- "image.generated" --> APIGW
   
-  APIGW -- "creative.copy.generate.request" --> Copy
-  Copy -- "creative.copy.generate.done" --> APIGW
+  APIGW -- "brand.compose.request" --> BC
+  BC -- "brand.composed" --> APIGW
   
-  APIGW -- "creative.overlay.request" --> Over
-  Over -- "creative.overlay.done" --> APIGW
+  APIGW -- "text.overlay.request" --> TO
+  TO -- "text.overlay.done" --> APIGW
   
-  Gen -- "write raw" --> S3
-  Brand -- "write branded" --> S3
-  Over -- "write final" --> S3
+  IG -- "write images" --> S3
+  BC -- "write branded" --> S3
+  TO -- "write final" --> S3
   
   APIGW -- "write campaigns" --> Mongo
-  Gen -- "write variants" --> Mongo
-  Copy -- "write copy" --> Mongo
-  Over -- "write metadata" --> Mongo
-  
-  Gen -- "on failure" --> Guard
-  Brand -- "on failure" --> Guard
-  Copy -- "on failure" --> Guard
-  Over -- "on failure" --> Guard
+  CG -- "write creatives" --> Mongo
+  IG -- "write images" --> Mongo
+  BC -- "write metadata" --> Mongo
+  TO -- "write metadata" --> Mongo
 ```
 
 ---
 
 ## Service Matrix
 
-> Queue groups ensure only **one** replica handles each message. Retries: 3 with backoff; final failure → `dlq.creative.<step>`; **Guardian** alerts.
-
-| Service | Purpose | Listens | Publishes | Mongo | S3 | Notes |
-|---------|---------|---------|-----------|-------|----|----|
-| **api-gateway** | REST API + orchestration | — | `briefs.ingested`, `context.enrich.request`, `creative.generate.request`, `creative.brand.compose.request`, `creative.copy.generate.request`, `creative.overlay.request` | **W** campaigns, variants | — | Handles workflow coordination |
-| **ui-webapp** | Streamlit UI | `creative.ready_for_review` | — (uses HTTP API) | **R** campaigns, variants | **R** signed URLs | Human approvals |
-| **context-enricher** | Build locale context packs | `context.enrich.request` (q.context) | `context.enrich.ready` | **W** context_packs | — | Static YAML + optional LLM enhancement |
-| **image-generator** | Agentic image generation | `creative.generate.request` (q.image) | `creative.generate.done` | **W** variants | **W** `/raw/*` | **CrewAI**: generate → evaluate → comply → retry |
-| **brand-composer** | Logo/color overlay | `creative.brand.compose.request` (q.brand) | `creative.brand.compose.done` | **W** variants | **R** `/raw/*` → **W** `/branded/*` | Non-destructive branding |
-| **copy-generator** | Agentic localized copy | `creative.copy.generate.request` (q.copy) | `creative.copy.generate.done` | **W** variants | **R** `/branded/*` | **CrewAI**: generate → evaluate → comply |
-| **overlay-composer** | Text overlay + aspect export | `creative.overlay.request` (q.overlay) | `creative.overlay.done` | **W** variants | **R** `/branded/*` → **W** `/final/<aspect>/*` | Exports 1:1, 9:16, 16:9 |
-| **guardian-dlq** | Watch DLQ & alert | `dlq.creative.*` (q.guardian) | `alerts.ops` (external: email/Slack) | **W** events | — | Failure monitoring |
-
----
-
-## Agentic Self-Evaluation Pattern
-
-### Traditional Approach (Old)
-```
-generate → separate_validator → separate_compliance → scorer → selector
-(5 services)
-```
-
-### Agentic Approach (New)
-```
-image-generator (single CrewAI agent):
-  ├─ GeneratorAgent: Creates images
-  ├─ CriticAgent: Evaluates quality
-  ├─ ComplianceAgent: Checks banned words, legal
-  └─ CoordinatorAgent: Retry logic, seed management
-(1 service, 4 agents)
-```
-
-**Benefits**:
-- **Fewer services**: 1 vs 5 (reduced operational complexity)
-- **Better quality**: Self-critique improves output
-- **Faster iteration**: No message bus overhead between steps
-- **Cost optimization**: Single LLM context, not multiple calls
-
-### Example: Image Generator Agentic Flow
-
-```python
-# Inside image-generator service
-from crewai import Agent, Task, Crew
-
-class ImageGeneratorService:
-    def __init__(self):
-        # Define agents
-        self.generator = Agent(
-            role="Image Creator",
-            goal="Generate high-quality product images",
-            tools=[dalle3_tool, sdxl_tool]
-        )
-        
-        self.critic = Agent(
-            role="Quality Evaluator",
-            goal="Assess image quality against brand guidelines",
-            tools=[vision_analysis_tool]
-        )
-        
-        self.compliance = Agent(
-            role="Brand Compliance Officer",
-            goal="Ensure legal and brand compliance",
-            tools=[text_scanner, image_analyzer]
-        )
-        
-        # Define tasks
-        self.generate_task = Task(
-            description="Generate product image for {product}",
-            agent=self.generator
-        )
-        
-        self.evaluate_task = Task(
-            description="Evaluate image quality, score 0-100",
-            agent=self.critic,
-            context=[self.generate_task]
-        )
-        
-        self.compliance_task = Task(
-            description="Check compliance, flag violations",
-            agent=self.compliance,
-            context=[self.generate_task, self.evaluate_task]
-        )
-        
-        # Create crew
-        self.crew = Crew(
-            agents=[self.generator, self.critic, self.compliance],
-            tasks=[self.generate_task, self.evaluate_task, self.compliance_task],
-            process=Process.sequential
-        )
-    
-    async def generate_with_quality_control(self, request):
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            result = await self.crew.kickoff(inputs={
-                "product": request.product,
-                "context": request.context_pack,
-                "seed": request.seed if attempt == 0 else random()
-            })
-            
-            if result.quality_score > 80 and result.compliant:
-                return result  # Success
-            
-            # Retry with refined prompt
-            logger.info(f"Attempt {attempt + 1} failed, refining prompt...")
-        
-        raise QualityThresholdNotMet("Max attempts exceeded")
-```
+| Service | Purpose | Technology | Listens | Publishes | Notes |
+|---------|---------|------------|---------|-----------|-------|
+| **api** | REST API + orchestration | FastAPI | — | All NATS events | Coordinates workflow |
+| **web** | Campaign creation UI | Streamlit | — | HTTP to API | User interface |
+| **context-enricher** | Locale context packs | GPT-4o-mini | `context.enrich.request` | `context.enrich.ready` | Culture, tone, legal |
+| **creative-generator** | Creative content | GPT-4o-mini | `creative.generate.request` | `creative.generate.done` | Generates copy |
+| **image-generator** | Image generation | DALL-E 3 | `creative.generate.done` | `image.generated` | 4 aspect ratios |
+| **brand-composer** | Logo placement | GPT-4o-mini vision + PIL | `image.generated` | `brand.composed` | AI-powered placement |
+| **text-overlay** | Text + export | PIL | `brand.composed` | `text.overlay.done` | Final assets to S3 |
 
 ---
 
@@ -414,18 +280,18 @@ spec:
 
 ---
 
-## Comparison: Simplified vs Original Design
+## Technology Stack
 
-| Aspect | Original (14 services) | Simplified (6 + 2) | Improvement |
-|--------|------------------------|-------------------|-------------|
-| **Service count** | 14 | 8 | -43% complexity |
-| **Message hops** | 12 per campaign | 6 per campaign | -50% latency |
-| **NATS subjects** | 20+ | 12 | Easier to understand |
-| **Agentic services** | 0 | 2 (image, copy) | Modern pattern |
-| **Lines of code** | ~3,000 | ~2,000 | -33% maintenance |
-| **Deployment time** | 5 min | 3 min | Faster iteration |
-
-**Key insight**: Agentic self-evaluation eliminates 6 services (orchestrator, compliance, scorer, selector, approval-handler, run-logger).
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | Streamlit | Campaign creation UI |
+| **API** | FastAPI | REST API + orchestration |
+| **Message Bus** | NATS JetStream | Event-driven communication |
+| **Database** | MongoDB | Campaign metadata |
+| **Storage** | MinIO/S3 | Asset storage |
+| **AI/ML** | OpenAI (DALL-E 3, GPT-4o-mini) | Image generation + text + vision |
+| **Image Processing** | PIL (Pillow) | Logo overlay, text rendering |
+| **Infrastructure** | Docker Compose | Local development |
 
 ---
 
@@ -433,5 +299,5 @@ spec:
 
 - [Why Microservices?](why-microservices.md) - Architectural trade-offs
 - [Simplified Alternative](simplified-alternative.md) - Monolithic Python app (300 lines)
-- [Reused Patterns](reused-patterns.md) - What we borrowed from Sentinel-AI
 - [Schemas Reference](schemas.md) - API models, NATS contracts, MongoDB schemas
+- [AI Logo Placement](ai-logo-placement.md) - How GPT-4o-mini vision analyzes images

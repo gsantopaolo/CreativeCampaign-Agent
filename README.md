@@ -1,34 +1,35 @@
-# CreativeCampaign-Agent
-Agentic AI for social ads: brand-safe hero images &amp; layouts, generated, resized, localized, and region-customized at scale
+# 🎨 CreativeCampaign-Agent
+
+AI-powered creative automation for social ads: generate brand-safe images, add logos intelligently, localize copy, and export in multiple formats—all at scale.
 
 ---
 
-## Why This Approach?
+## 💡 Why This Approach?
 
-This isn't just a coding exercise—it's built like a real customer deployment. Instead of creating a toy demo from scratch, this POC uses production-ready patterns that you'd actually deploy at scale.
+This isn't just a coding exercise—it's built like a real customer deployment. Instead of a toy demo, this POC demonstrates production-ready patterns you'd actually use at scale.
 
 ### Design Principles
 
-✅ **Smart Architecture** - Event-driven microservices where they add value, simplicity everywhere else  
-✅ **Production-Ready** - Built with scalability, reliability, and observability from day one  
-✅ **AI-Powered Quality** - Intelligent agents handle quality control and compliance automatically  
-✅ **Real-World Ready** - Works with enterprise tools (S3, MongoDB, NATS) you'd use in production  
+✅ **Smart Architecture** - Event-driven microservices where they add value  
+✅ **Production-Ready** - Scalability, reliability, and observability from day one  
+✅ **AI-Powered** - OpenAI DALL-E 3 + GPT-4o-mini for intelligent automation  
+✅ **Real-World Ready** - Enterprise tools (S3, MongoDB, NATS) you'd use in production  
 
 ### What Makes This Production-Ready?
 
-- **Event-Driven Architecture**: NATS JetStream for decoupled, scalable communication
-- **Fault Tolerance**: Dead letter queues, retries, health checks, graceful degradation
-- **Observability**: Structured logging, metrics, distributed tracing ready
-- **Agentic AI**: Self-evaluating agents that improve quality without manual intervention
-- **Enterprise Integrations**: S3-compatible storage, MongoDB, multi-provider GenAI support
+- 🔄 **Event-Driven**: NATS JetStream for reliable, scalable messaging
+- 🛡️ **Fault Tolerant**: Retries, health checks, graceful degradation
+- 📊 **Observable**: Structured logging with emojis for easy scanning
+- 🤖 **AI-Powered**: GPT-4o-mini vision analyzes images for optimal logo placement
+- 🏢 **Enterprise Ready**: S3 storage, MongoDB, Docker Compose
 
 > **For evaluators**: This shows how a 2-day customer POC would look at scale. See [`docs/simplified-alternative.md`](docs/simplified-alternative.md) for a minimal approach, and [`docs/why-microservices.md`](docs/why-microservices.md) for architectural trade-offs.
 
 ---
 
-# Creative Automation for Localized Social Ads (POC)
+## 📋 What It Does
 
-End-to-end pipeline that turns a **campaign brief** into **localized creatives** (images + copy) for multiple products and languages, with **brand composition**, **approvals & revisions**, **agentic quality control**, and **observability**. Built for the Adobe FDE take-home.
+Turns a **campaign brief** into **localized creatives** (images + copy) for multiple products and languages, with **AI-powered branding**, **multi-format export**, and **production-ready reliability**.
 
 > Full details:
 >
@@ -36,21 +37,19 @@ End-to-end pipeline that turns a **campaign brief** into **localized creatives**
 > * **Why this architecture?** → [`docs/why-microservices.md`](docs/why-microservices.md)
 > * **Simplified alternative** → [`docs/simplified-alternative.md`](docs/simplified-alternative.md)
 > * **API & Schema Reference** → [`docs/schemas.md`](docs/schemas.md)
-> * **Reused patterns** → [`docs/reused-patterns.md`](docs/reused-patterns.md)
+> * **Implementation patterns** → [`docs/implementation-patterns.md`](docs/implementation-patterns.md)
 
 ---
 
-## TL;DR
+## ⚡ TL;DR
 
-* **Stack:** Python · **FastAPI** (REST + orchestration) · **Streamlit** (UI) · **NATS** (bus, JetStream) · **MongoDB** (metadata) · **MinIO/S3** (assets via `boto3`)
-* **Architecture:** 6 core services + 2 supporting (simplified from 14 via agentic self-evaluation)
-* **GenAI:** **CrewAI agents** for image/copy generation with built-in quality control & compliance
-* **Providers:** OpenAI, Replicate, Stability AI, or custom adapters
-* **Branding:** Separate **BrandComposer** service with **AI-powered logo placement** using GPT-4o-mini vision analysis
-* **Localization:** Per-locale **Context Pack** → agentic generation → culturally-aware copy
-* **Approvals:** Human-in-the-loop via Streamlit; first revision keeps seed, later randomizes
-* **Reliability:** Retries + **DLQ** + **Guardian** for failure monitoring
-* **Observability:** Structured logging, health checks, NATS monitoring (optional: Prometheus/Grafana)
+* **Stack:** Python · FastAPI · Streamlit · NATS JetStream · MongoDB · MinIO/S3
+* **Architecture:** 5 worker services + API + UI (event-driven)
+* **AI:** OpenAI DALL-E 3 (images) + GPT-4o-mini (text + vision analysis)
+* **Smart Branding:** AI vision analyzes each image to find the perfect logo spot 🎯
+* **Localization:** Context-aware generation for culturally-appropriate copy 🌍
+* **Multi-Format:** 4 aspect ratios per creative (1x1, 4x5, 9x16, 16x9) 📐
+* **Reliability:** Automatic retries, health checks, structured logging ✅
 
 ---
 
@@ -87,7 +86,7 @@ docker-compose up -d
 - MongoDB - `localhost:27017`
 - MinIO/S3 - `http://localhost:9000`
 - NATS JetStream - `localhost:4222`
-- 6 worker services (context, image, brand, text, overlay, guardian)
+- 5 worker services (context-enricher, creative-generator, image-generator, brand-composer, text-overlay)
 
 ### Step 3: Access the UI
 
@@ -451,21 +450,41 @@ Pluggable **alert-dispatcher** routes events to sinks configured in `config.yaml
 
 ---
 
-## Acceptance checklist (maps to FDE)
+## ✅ Requirements Checklist
 
-* ✅ Architecture + roadmap + backend/data integration (**see `docs/architecture.md`**)
-* ✅ Working POC with README + example I/O
-* ✅ Generates / reuses assets; outputs **1:1, 9:16, 16:9**; overlays copy
-* ✅ Per-locale context, image candidates, localized copy; **best per locale**
-* ✅ BrandComposer (logo/colors) as a separate step; compliance WARNs
-* ✅ Agentic design with NATS, DLQ + **Guardian**, pluggable alerts
-* ✅ Demo flow & instructions (record screen of UI + outputs)
+* ✅ **Architecture + roadmap** - See [`docs/architecture.md`](docs/architecture.md)
+* ✅ **Working POC** - Docker Compose, full pipeline
+* ✅ **Multi-format export** - 4 aspect ratios (1x1, 4x5, 9x16, 16x9)
+* ✅ **Localization** - Per-locale context + culturally-aware copy
+* ✅ **AI-powered branding** - GPT-4o-mini vision for logo placement
+* ✅ **Event-driven** - NATS JetStream with retries & health checks
+* ✅ **Production patterns** - Microservices, observability, scalability
 
 ---
 
-## Limitations & next steps
+## 🚧 Known Limitations & Future Enhancements
 
-* Streamlit auth skipped for POC (add in prod)
-* Copy/score heuristics are tunable; hook in A/B metrics later
-* Add more providers (Midjourney relay, local Diffusers) behind the same interface
-* Harden compliance (geo-specific legal templates)
+**Current Limitations:**
+- No authentication (Streamlit is open - add OAuth for production)
+- S3 upload partially implemented (metadata stored, files ready)
+- Single OpenAI provider (works great, but could add fallbacks)
+
+**Future Enhancements:**
+- 🔐 Add authentication & role-based access
+- 🎨 Support more AI providers (Midjourney, Stable Diffusion)
+- 📊 A/B testing metrics integration
+- 🌍 Geo-specific legal compliance templates
+- 📈 Prometheus metrics + Grafana dashboards
+
+---
+
+## 🎯 Summary
+
+This POC demonstrates how to build production-ready creative automation at scale:
+
+✅ **Event-driven architecture** that scales horizontally  
+✅ **AI-powered intelligence** for branding and localization  
+✅ **Production patterns** you'd actually deploy to customers  
+✅ **Observable & reliable** with health checks and retries  
+
+Built in the spirit of how a Forward Deployed Engineer would approach a 2-day customer POC—showing both technical depth and pragmatic engineering judgment.

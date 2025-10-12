@@ -428,7 +428,7 @@ CreativeCampaign-Agent/
 │       ├── models/
 │       │   └── campaign_models.py  # Pydantic models
 │       ├── gen_types/         # Generated protobuf code
-│       └── middlewares/       # NATS, health checks (from Sentinel-AI)
+│       └── middlewares/       # NATS, health checks
 └── proto/                     # Protobuf definitions
 ```
 
@@ -439,12 +439,11 @@ CreativeCampaign-Agent/
 After API is running and tested:
 
 1. ✅ **Build Worker Services**:
-   - context-enricher
-   - image-generator (CrewAI agentic)
-   - brand-composer
-   - copy-generator (CrewAI agentic)
-   - overlay-composer
-   - guardian-dlq
+   - context-enricher (GPT-4o-mini)
+   - creative-generator (GPT-4o-mini)
+   - image-generator (DALL-E 3)
+   - brand-composer (GPT-4o-mini vision + PIL)
+   - text-overlay (PIL)
 
 2. ✅ **Build UI**:
    - Streamlit web app for campaign submission
@@ -464,10 +463,9 @@ After API is running and tested:
   - `src/api/.env` → Used for local development (localhost URLs)
   - Both files have `.env.example` templates with all required variables
 - **All Environment Variables**: Every variable in `.env` files is actually used by the code - no unused config!
-- **OpenAI API Key**: Will be needed for worker services (image-generator, copy-generator)
+- **OpenAI API Key**: Required for all AI services (DALL-E 3, GPT-4o-mini)
 - **Data Persistence**: Docker volumes store MongoDB, NATS, and MinIO data
-- **Logs**: All logs use emoji style (copied from Sentinel-AI)
-- **Samples**: Don't modify `samples/sentinel-AI` - it's reference code only
+- **Logs**: All logs use emoji style for better readability
 
 ---
 

@@ -62,15 +62,15 @@ This POC uses a **microservices architecture** not because it's trendy, but beca
 - This shows what a **2-day customer deployment** would look like
 - Evaluators assess **production thinking**, not toy demos
 
-**2. Leverage Proven Patterns**
-- **70% reused** from [Sentinel-AI](../samples/sentinel-AI) (NATS, FastAPI, health checks)
-- **Rapid deployment**: Spin up in minutes using battle-tested components
-- **Low risk**: Patterns proven in production environments
+**2. Production-Ready Patterns**
+- **Event-driven architecture**: NATS JetStream for reliable messaging
+- **Rapid deployment**: Docker Compose for easy local development
+- **Proven technologies**: FastAPI, MongoDB, OpenAI APIs
 
 **3. Show Architectural Judgment**
 - **Trade-off awareness**: We know when to simplify (see [simplified-alternative.md](simplified-alternative.md))
-- **Right-sizing**: Only 6 core services, not 20
-- **Modern patterns**: Agentic self-evaluation reduces service count
+- **Right-sizing**: Only 5 worker services + API + UI
+- **Modern patterns**: AI-powered quality control built into services
 
 ### Simplified Alternative Provided
 
@@ -218,8 +218,8 @@ spec:
 
 1. **Microservices aren't always the answer** - but for Adobe customer scale, they're the right choice
 2. **We show both approaches** - demonstrates architectural maturity
-3. **Leverage proven patterns** - 70% reused from Sentinel-AI = low risk, fast delivery
-4. **Right-sized design** - 6 services, not 20; agentic patterns reduce complexity
+3. **Production-ready patterns** - Event-driven, reliable, scalable
+4. **Right-sized design** - 5 worker services + API + UI, not 20
 5. **Production thinking** - This is how we'd deploy for a real customer in 2 days
 
 ---
@@ -227,5 +227,5 @@ spec:
 ## Further Reading
 
 - [Simplified Alternative](simplified-alternative.md) - 300-line monolithic version
-- [Reused Patterns](reused-patterns.md) - What we borrowed from Sentinel-AI
+- [Implementation Patterns](implementation-patterns.md) - Key code patterns and technologies
 - [Architecture Overview](architecture.md) - Service interactions and data flows

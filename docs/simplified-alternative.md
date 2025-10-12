@@ -494,5 +494,5 @@ class Reporter:
 ## Further Reading
 
 - [Why Microservices?](why-microservices.md) - When to use which approach
-- [Reused Patterns](reused-patterns.md) - How we leverage Sentinel-AI
+- [Implementation Patterns](implementation-patterns.md) - Production-ready code patterns
 - [Architecture Overview](architecture.md) - Full microservices design

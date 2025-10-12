@@ -18,10 +18,10 @@ graph TB
     
     subgraph "Core Services"
         CE[Context Enricher<br/>Locale-specific context]
-        IG[Image Generator<br/>DALL-E 3 + Agentic AI]
+        CG[Creative Generator<br/>GPT-4o-mini]
+        IG[Image Generator<br/>DALL-E 3]
         BC[Brand Composer<br/>AI Logo Placement]
-        TG[Text Generator<br/>Localized Copy]
-        OC[Overlay Composer<br/>Multi-format Export]
+        TO[Text Overlay<br/>Multi-format Export]
     end
     
     subgraph "Supporting Services"
@@ -41,31 +41,32 @@ graph TB
     API -->|Publish Events| NATS
     API <-->|Read/Write| MONGO
     
-    NATS -->|briefs.ingested| CE
-    NATS -->|context.enrich.ready| IG
-    NATS -->|creative.generate.done| BC
-    NATS -->|creative.brand.compose.done| TG
-    NATS -->|creative.copy.generate.done| OC
+    NATS -->|context.enrich.request| CE
+    NATS -->|creative.generate.request| CG
+    NATS -->|creative.generate.done| IG
+    NATS -->|image.generated| BC
+    NATS -->|brand.composed| TO
     
-    CE -->|Publish| NATS
-    IG -->|Publish| NATS
-    BC -->|Publish| NATS
-    TG -->|Publish| NATS
-    OC -->|Publish| NATS
+    CE -->|context.enrich.ready| NATS
+    CG -->|creative.generate.done| NATS
+    IG -->|image.generated| NATS
+    BC -->|brand.composed| NATS
+    TO -->|text.overlay.done| NATS
     
+    CE -->|Generate Context| OPENAI
+    CG -->|Generate Content| OPENAI
     IG -->|Generate Images| OPENAI
     BC -->|AI Logo Analysis| OPENAI
-    TG -->|Generate Copy| OPENAI
     
-    IG -->|Upload Raw Images| S3
-    BC -->|Upload Branded Images| S3
-    OC -->|Upload Final Assets| S3
+    IG -->|Upload Images| S3
+    BC -->|Upload Branded| S3
+    TO -->|Upload Final Assets| S3
     
-    CE <-->|Cache Context| MONGO
-    IG <-->|Store Variants| MONGO
+    CE <-->|Store Context| MONGO
+    CG <-->|Store Creatives| MONGO
+    IG <-->|Store Images| MONGO
     BC <-->|Update Metadata| MONGO
-    TG <-->|Store Copy| MONGO
-    OC <-->|Update Status| MONGO
+    TO <-->|Update Status| MONGO
     
     NATS -.->|Failed Messages| GDQ
     GDQ -->|Alert| UI
@@ -87,10 +88,10 @@ sequenceDiagram
     participant API as API Gateway
     participant NATS as NATS JetStream
     participant CE as Context Enricher
+    participant CG as Creative Generator
     participant IG as Image Generator
     participant BC as Brand Composer
-    participant TG as Text Generator
-    participant OC as Overlay Composer
+    participant TO as Text Overlay
     participant OpenAI as OpenAI API
     participant S3 as MinIO/S3
     participant DB as MongoDB
@@ -101,38 +102,38 @@ sequenceDiagram
     API->>NATS: Publish briefs.ingested
     API-->>UI: 202 Accepted
     
-    NATS->>CE: briefs.ingested
-    CE->>DB: Build Context Pack
+    NATS->>CE: context.enrich.request
+    CE->>OpenAI: Generate Context (GPT-4o-mini)
+    CE->>DB: Store Context Pack
     CE->>NATS: Publish context.enrich.ready
     
-    NATS->>IG: context.enrich.ready
-    IG->>OpenAI: Generate Image (DALL-E 3)
-    OpenAI-->>IG: Image Data
-    IG->>S3: Upload Raw Image
-    IG->>DB: Store Variant
-    IG->>NATS: Publish creative.generate.done
+    NATS->>CG: creative.generate.request
+    CG->>OpenAI: Generate Content (GPT-4o-mini)
+    CG->>DB: Store Creative
+    CG->>NATS: Publish creative.generate.done
     
-    NATS->>BC: creative.generate.done
-    BC->>S3: Download Raw Image
+    NATS->>IG: creative.generate.done
+    IG->>OpenAI: Generate Images (DALL-E 3 × 4 aspect ratios)
+    OpenAI-->>IG: Image Data
+    IG->>S3: Upload Images
+    IG->>DB: Store Image Metadata
+    IG->>NATS: Publish image.generated
+    
+    NATS->>BC: image.generated
+    BC->>S3: Download Image
     BC->>OpenAI: Analyze for Logo Placement (GPT-4o-mini Vision)
     OpenAI-->>BC: Optimal Position + Reasoning
     BC->>BC: Apply Logo + Brand Colors
     BC->>S3: Upload Branded Image
     BC->>DB: Update with Placement Info
-    BC->>NATS: Publish creative.brand.compose.done
+    BC->>NATS: Publish brand.composed
     
-    NATS->>TG: creative.brand.compose.done
-    TG->>OpenAI: Generate Localized Copy (GPT-4o-mini)
-    OpenAI-->>TG: Campaign Message
-    TG->>DB: Store Copy
-    TG->>NATS: Publish creative.copy.generate.done
-    
-    NATS->>OC: creative.copy.generate.done
-    OC->>S3: Download Branded Image
-    OC->>OC: Overlay Text (4 aspect ratios)
-    OC->>S3: Upload Final Assets (1x1, 4x5, 9x16, 16x9)
-    OC->>DB: Update Campaign Status
-    OC->>NATS: Publish creative.ready_for_review
+    NATS->>TO: brand.composed
+    TO->>S3: Download Branded Image
+    TO->>TO: Overlay Text (4 aspect ratios)
+    TO->>S3: Upload Final Assets (1x1, 4x5, 9x16, 16x9)
+    TO->>DB: Update Campaign Status
+    TO->>NATS: Publish text.overlay.done
     
     NATS->>API: creative.ready_for_review
     API->>UI: Real-time Update

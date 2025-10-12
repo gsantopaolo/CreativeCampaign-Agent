@@ -2,7 +2,7 @@
 motor==3.3.2
 python-dotenv==1.0.0
 nats-py==2.6.0
-protobuf>=3.20.0,<4.0.0
+protobuf==6.31.1
 pymongo==4.5.0
 httpx>=0.24.0,<0.25.0
 Pillow==10.1.0  # For image processing

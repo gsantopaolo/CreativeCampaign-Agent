@@ -18,6 +18,7 @@ import boto3
 from botocore.client import Config
 from openai import AsyncOpenAI
 import base64
+from pydantic import BaseModel, Field
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -83,6 +84,17 @@ s3_external_client = None  # For generating presigned URLs with external endpoin
 openai_client: AsyncOpenAI = None
 
 
+# ————— Pydantic Models for Structured LLM Output —————
+
+class LogoPlacementResponse(BaseModel):
+    """Structured response from LLM for logo placement analysis."""
+    position: str = Field(..., description="Logo position: bottom_right, bottom_left, top_right, or top_left")
+    x_percent: float = Field(..., description="X coordinate as percentage of image width (0.0-1.0)")
+    y_percent: float = Field(..., description="Y coordinate as percentage of image height (0.0-1.0)")
+    scale: float = Field(..., description="Logo scale factor (0.08-0.25)")
+    reasoning: str = Field(..., description="Detailed explanation of placement decision with pixel coordinates")
+
+
 def hex_to_rgb(hex_color: str) -> tuple:
     """Convert hex color to RGB tuple."""
     hex_color = hex_color.lstrip('#')
@@ -110,51 +122,59 @@ async def analyze_logo_placement(image_data: bytes, width: int, height: int) -> 
 
 IMAGE DIMENSIONS: {width}x{height} pixels
 
-YOUR TASK: Calculate the EXACT position and size for a brand logo overlay using pixel-level precision.
+YOUR TASK: Find the optimal position and size for a brand logo in the TOP-MIDDLE area of the image.
+
+FOCUS AREA: TOP-MIDDLE SECTION
+- Analyze ONLY the top 40% of the image (y: 0 to {int(height * 0.4)}px)
+- Focus on the horizontal middle 60% (x: {int(width * 0.2)} to {int(width * 0.8)}px)
+- This is the primary zone for logo placement
 
 STEP-BY-STEP ANALYSIS:
 
-1. IDENTIFY VISUAL ELEMENTS:
-   - Scan the entire image
-   - Note approximate pixel locations of: faces, products, text, decorative elements
-   - Example: "Products occupy pixels 200-800 horizontally, 400-900 vertically"
+1. SCAN TOP-MIDDLE AREA:
+   - Identify visual elements in the top 40% of the image
+   - Note pixel locations of: products, faces, text, decorative elements
+   - Find empty/plain areas suitable for logo placement
+   - Example: "Top-left has product at 50-300px, top-right clear at 700-950px"
 
-2. FIND LARGEST EMPTY AREA:
-   - Identify the biggest continuous space with minimal visual clutter
-   - Estimate its boundaries in pixels (x1, y1, x2, y2)
-   - Calculate available width and height
-   - Example: "Empty area in bottom-right: 700-950px horizontal, 800-950px vertical = 250x150px available"
+2. FIND BEST LOGO SPOT IN TOP-MIDDLE:
+   - Look for the largest continuous empty space in the top-middle zone
+   - Prefer areas with plain/solid backgrounds
+   - Estimate boundaries in pixels (x1, y1, x2, y2)
+   - Example: "Clear area at top-center: x=400-600px, y=50-200px"
 
 3. CALCULATE LOGO SIZE:
-   - Logo should be 60-80% of the empty area size
-   - Calculate: logo_size_px = min(empty_width, empty_height) * 0.7
-   - Convert to scale: scale = logo_size_px / {width}
-   - Typical range: 0.08-0.25
-   - Example: "Empty area 250x150px → logo 120px → scale = 120/1024 = 0.12"
+   - Logo should be 10-20% of image width
+   - Calculate: logo_size_px = {width} * scale (where scale is 0.10-0.20)
+   - Smaller logos (0.10-0.12) for busy backgrounds
+   - Larger logos (0.15-0.20) for plain backgrounds
+   - Example: "Plain background → scale=0.15 → logo 154px for 1024px image"
 
-4. CALCULATE EXACT POSITION (CRITICAL):
-   - Find CENTER of empty area: center_x = (x1+x2)/2, center_y = (y1+y2)/2
-   - Logo bottom-right corner: x = center_x + (logo_size/2), y = center_y + (logo_size/2)
-   - Convert to percentages: x_percent = x/{width}, y_percent = y/{height}
-   - Add 30-50px margin from image edges
-   - Example: "Center at (825,875), logo 120px → bottom-right at (885,935) → x_percent=0.86, y_percent=0.91"
+4. CALCULATE EXACT POSITION:
+   - Find CENTER of the chosen empty area in top-middle
+   - Logo center: center_x, center_y
+   - Ensure 30-50px margin from top edge
+   - Ensure logo stays in top 40% of image
+   - Example: "Center at (512, 100) with 40px top margin"
 
 5. VERIFY:
-   - Logo has 30-50px clearance from ALL objects?
-   - Logo doesn't touch image edges (min 30px margin)?
-   - Size is appropriate for the space?
+   - Logo is in TOP 40% of image? (y < {int(height * 0.4)})
+   - Logo is horizontally centered or near-center?
+   - Logo has clearance from visual elements?
+   - Size is readable but not overwhelming?
 
-BE PRECISE: Calculate actual pixel coordinates, don't just guess regions!
+CRITICAL: Focus on TOP-MIDDLE placement. Calculate precise pixel coordinates!
 
-RESPOND with valid JSON:
+Respond with a JSON object in this EXACT format:
 {{
-    "position": "bottom_right",
-    "x_percent": 0.86,
-    "y_percent": 0.91,
-    "scale": 0.12,
-    "reasoning": "Empty area found at pixels [x1-x2, y1-y2]. Size: [W]x[H]px. Logo: [size]px. Center: ([cx],[cy]). Bottom-right: ([x],[y]). Clearance: [dist]px from [nearest object]."
-}}"""
-        
+  "position": "top_center",
+  "x_percent": 0.50,
+  "y_percent": 0.15,
+  "scale": 0.15,
+  "reasoning": "detailed explanation with pixel coordinates for TOP-MIDDLE placement"
+}}
+
+Return ONLY the JSON object. Logo MUST be in top 40% of image."""        
         response = await openai_client.chat.completions.create(
             model=OPENAI_TEXT_MODEL,
             messages=[
@@ -175,8 +195,10 @@ RESPOND with valid JSON:
             max_tokens=300
         )
         
+        # Parse and validate with Pydantic
         import json
-        result = json.loads(response.choices[0].message.content)
+        json_response = json.loads(response.choices[0].message.content)
+        result = LogoPlacementResponse(**json_response).model_dump()
         
         # Convert percentages to pixel coordinates
         result["x"] = int(result["x_percent"] * width)
@@ -188,14 +210,14 @@ RESPOND with valid JSON:
         return result
         
     except Exception as e:
-        logger.warning(f"  ⚠️  LLM logo placement failed: {e}, using default")
-        # Fallback to bottom_right
+        logger.warning(f"  ⚠️  LLM logo placement failed: {e}, using default top-center")
+        # Fallback to top-center
         return {
-            "position": "bottom_right",
-            "x": int(width * 0.85),
-            "y": int(height * 0.90),
+            "position": "top_center",
+            "x": int(width * 0.50),
+            "y": int(height * 0.12),
             "scale": 0.15,
-            "reasoning": "Default placement (LLM analysis failed)"
+            "reasoning": "Default top-center placement (LLM analysis failed)"
         }
 
 
@@ -393,16 +415,12 @@ async def handle_image_generated(msg: Msg):
         
         if result:
             # Publish to next stage
-            brand_composed = brand_compose_pb2.BrandComposed(
+            brand_composed = brand_compose_pb2.BrandComposeDone(
                 campaign_id=image_request.campaign_id,
                 locale=image_request.locale,
-                product_id=image_request.product_id,
-                branded_image_url=result["branded_image_url"],
-                branded_s3_uri=result["branded_s3_uri"],
-                original_image_url=result["original_image_url"],
-                original_s3_uri=result["original_s3_uri"],
-                status="composed",
-                composed_at=datetime.utcnow().isoformat() + "Z"
+                s3_uri_branded=result["branded_s3_uri"],
+                correlation_id="",
+                timestamp=datetime.utcnow().isoformat() + "Z"
             )
             
             await publisher.publish(brand_composed)
@@ -482,7 +500,7 @@ async def main():
         nats_reconnect_time_wait=NATS_RECONNECT_TIME_WAIT,
         nats_connect_timeout=NATS_CONNECT_TIMEOUT,
         nats_max_reconnect_attempts=NATS_MAX_RECONNECT_ATTEMPTS,
-        message_type="BrandComposed"
+        message_type="BrandComposeDone"
     )
     await publisher.connect()
     logger.info("✅ Brand composition publisher connected to NATS.")

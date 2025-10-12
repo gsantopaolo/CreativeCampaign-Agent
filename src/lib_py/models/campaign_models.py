@@ -22,6 +22,7 @@ class AspectRatio(str, Enum):
     SQUARE = "1x1"
     STORY = "9x16"
     LANDSCAPE = "16x9"
+    INSTAGRAM_PORTRAIT = "4x5"
 
 
 class ImageFormat(str, Enum):
@@ -121,7 +122,7 @@ class BrandPlacement(BaseModel):
 
 
 class OutputSpec(BaseModel):
-    aspect_ratios: List[AspectRatio] = [AspectRatio.SQUARE, AspectRatio.STORY, AspectRatio.LANDSCAPE]
+    aspect_ratios: List[AspectRatio] = [AspectRatio.SQUARE, AspectRatio.INSTAGRAM_PORTRAIT, AspectRatio.STORY, AspectRatio.LANDSCAPE]
     format: ImageFormat = ImageFormat.PNG
     s3_prefix: str = "outputs/"
 

@@ -19,10 +19,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir grpcio-tools
 
 # Copy protobuf definitions
-COPY src/lib_py/gen_types/ /tmp/protos/
+COPY proto/ /tmp/protos/
 
 # Compile protobufs
 RUN python -m grpc_tools.protoc -I/tmp/protos/ --python_out=/tmp/protos/ /tmp/protos/*.proto
+
+# Fix imports to use relative imports
+RUN cd /tmp/protos && for file in *_pb2.py; do sed -i "s/^import \(.*\)_pb2 as/from . import \1_pb2 as/g" "$file"; done
 
 # Copy application code
 COPY src/text_overlay/main.py /app/src/text_overlay/

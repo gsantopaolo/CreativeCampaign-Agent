@@ -1,0 +1,7 @@
+summary of Message Flow:
+API → context.enrich.request → Context Enricher
+Context Enricher → context.enrich.ready → Creative Generator
+Creative Generator → creative.generate.done → Image Generator
+Image Generator → image.generated → Brand Composer
+Brand Composer → brand.composed → Text Overlay
+Text Overlay → text.overlaid → Final Output

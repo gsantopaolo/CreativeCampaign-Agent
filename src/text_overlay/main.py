@@ -2,24 +2,25 @@
 Text Overlay Service
 
 Subscribes to: brand.composed
-Publishes to: text.overlaid
 
 Adds campaign message text to branded images using AI-powered placement.
 """
 
+import os
+import sys
 import asyncio
 import base64
 import json
-import os
-import sys
-from io import BytesIO
+import logging
 from datetime import datetime, timezone
-
-import httpx
-from openai import AsyncOpenAI
-from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
+from typing import Optional
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 import boto3
 from botocore.client import Config
+from openai import AsyncOpenAI
+from PIL import Image, ImageDraw, ImageFont
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -30,7 +31,6 @@ from src.lib_py.middlewares.jetstream_event_subscriber import JetStreamEventSubs
 from src.lib_py.middlewares.readiness_probe import ReadinessProbe
 
 # ————— Logging Setup —————
-import logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -86,16 +86,31 @@ db = mongo_client[MONGODB_DB_NAME]
 readiness_probe = None
 
 
+# ————— Pydantic Models for Structured LLM Output —————
+
+class TextPlacementResponse(BaseModel):
+    """Structured response from LLM for text placement analysis."""
+    box_x: int = Field(..., description="Top-left X coordinate of text box in pixels")
+    box_y: int = Field(..., description="Top-left Y coordinate of text box in pixels")
+    box_width: int = Field(..., description="Width of text box in pixels")
+    box_height: int = Field(..., description="Height of text box in pixels")
+    font_size: int = Field(..., description="Font size in points (25-80)")
+    text_color: str = Field(..., description="Hex color code for text (e.g., #FFFFFF)")
+    use_brand_color: bool = Field(..., description="Whether brand color was used")
+    background_opacity: float = Field(..., description="Background box opacity (0.0-1.0)")
+    alignment: str = Field(..., description="Text alignment: left, center, or right")
+    reasoning: str = Field(..., description="Brief explanation of placement decision")
+
+
 def hex_to_rgb(hex_color: str) -> tuple:
     """Convert hex color to RGB tuple."""
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
-async def analyze_text_placement(image_data: bytes, width: int, height: int, 
-                                 text: str, brand_color: str) -> dict:
+def calculate_bottom_middle_placement(width: int, height: int, text: str, brand_color: str) -> dict:
     """
-    Use LLM vision to determine optimal text placement, size, and styling.
+    Calculate optimal text placement in bottom middle using code-based logic.
     
     Returns:
         dict: {
@@ -111,126 +126,53 @@ async def analyze_text_placement(image_data: bytes, width: int, height: int,
             "reasoning": str
         }
     """
-    try:
-        # Convert image to base64
-        base64_image = base64.b64encode(image_data).decode('utf-8')
-        
-        prompt = f"""You are an expert graphic designer analyzing a product marketing image.
-
-IMAGE DIMENSIONS: {width}x{height} pixels
-TEXT TO OVERLAY: "{text}"
-BRAND COLOR: {brand_color}
-
-YOUR TASK: Determine the OPTIMAL placement, size, and styling for overlaying this text on the image.
-
-STEP-BY-STEP ANALYSIS:
-
-1. SCAN IMAGE CONTENT:
-   - Identify all visual elements (products, faces, decorative items)
-   - Note their approximate pixel locations
-   - Find areas with minimal visual clutter
-   - Assess background colors and textures in each area
-
-2. FIND OPTIMAL TEXT PLACEMENT ZONE:
-   - Look for the largest continuous area with plain/simple background
-   - Ideal zones: top 20%, bottom 20%, or sides with empty space
-   - Avoid: center (usually has products), faces, busy patterns
-   - Estimate zone boundaries in pixels (x1, y1, x2, y2)
-
-3. CALCULATE TEXT BOX SIZE:
-   - Text length: {len(text)} characters
-   - Estimate required width: ~{len(text) * 15}px (adjust based on available space)
-   - Calculate height based on font size (1-3 lines of text)
-   - Box should fit comfortably in the chosen zone with 20-30px padding
-
-4. DETERMINE FONT SIZE:
-   - Large text (60-80pt): Ample space (>400px width), main headline
-   - Medium text (40-60pt): Moderate space (250-400px), standard message
-   - Small text (25-40pt): Limited space (<250px), compact placement
-   - Text must be readable but not overwhelming
-
-5. CHOOSE TEXT COLOR:
-   - Analyze background colors in the chosen zone
-   - If background is DARK (black, navy, brown): Use WHITE (#FFFFFF) text
-   - If background is LIGHT (white, cream, pastel): Use DARK (#000000 or brand color) text
-   - Brand color ({brand_color}): Use ONLY if it contrasts well with background
-   - Priority: READABILITY over branding
-
-6. BACKGROUND OPACITY:
-   - If background is busy/textured: Use 0.6-0.8 opacity (semi-transparent box)
-   - If background is plain/solid: Use 0.0-0.3 opacity (minimal/no box)
-   - Box color: Usually black or white, opposite of text color
-
-7. TEXT ALIGNMENT:
-   - Center: For centered compositions, symmetrical layouts
-   - Left: For left-aligned content, reading flow
-   - Right: For right-aligned content, balance
-
-CALCULATE EXACT COORDINATES:
-- Find center of optimal zone: center_x, center_y
-- Calculate box top-left: box_x = center_x - (box_width/2), box_y = center_y - (box_height/2)
-- Ensure 20-30px margin from image edges
-- Verify text box doesn't overlap important visual elements
-
-RESPOND with valid JSON:
-{{
-    "box_x": 100,
-    "box_y": 50,
-    "box_width": 800,
-    "box_height": 120,
-    "font_size": 55,
-    "text_color": "#FFFFFF",
-    "use_brand_color": false,
-    "background_opacity": 0.5,
-    "alignment": "center",
-    "reasoning": "Optimal zone found at [x1-x2, y1-y2]. Background: [description]. Text color [color] chosen for contrast. Font size [size]pt fits comfortably. Box positioned at ([x],[y]) with [opacity] opacity for readability."
-}}
-
-CRITICAL: Be PRECISE with pixel coordinates. Calculate based on actual image content, not generic positions!"""
-        
-        response = await openai_client.chat.completions.create(
-            model=OPENAI_TEXT_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{base64_image}"
-                            }
-                        }
-                    ]
-                }
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=500
-        )
-        
-        result = json.loads(response.choices[0].message.content)
-        
-        logger.info(f"  🤖 LLM text placement: box at ({result['box_x']}, {result['box_y']}), size {result['box_width']}x{result['box_height']}")
-        logger.info(f"  📝 Font: {result['font_size']}pt, color: {result['text_color']}, alignment: {result['alignment']}")
-        logger.info(f"  💡 Reasoning: {result['reasoning']}")
-        
-        return result
-        
-    except Exception as e:
-        logger.warning(f"  ⚠️  LLM text placement failed: {e}, using default")
-        # Fallback to safe bottom placement
-        return {
-            "box_x": int(width * 0.1),
-            "box_y": int(height * 0.75),
-            "box_width": int(width * 0.8),
-            "box_height": int(height * 0.15),
-            "font_size": 50,
-            "text_color": "#FFFFFF",
-            "use_brand_color": False,
-            "background_opacity": 0.6,
-            "alignment": "center",
-            "reasoning": "Default placement (LLM analysis failed)"
-        }
+    # Calculate font size based on image dimensions and text length
+    # Base font size on image width, adjusted for text length
+    base_font_size = int(width * 0.05)  # 5% of image width
+    
+    # Adjust for text length (longer text = smaller font)
+    text_length = len(text)
+    if text_length > 60:
+        font_size = int(base_font_size * 0.7)
+    elif text_length > 40:
+        font_size = int(base_font_size * 0.85)
+    else:
+        font_size = base_font_size
+    
+    # Ensure font size is within reasonable bounds
+    font_size = max(25, min(80, font_size))
+    
+    # Calculate box dimensions
+    # Width: 80% of image width with margins
+    box_width = int(width * 0.8)
+    
+    # Height: Estimate based on text length and font size
+    # Assume ~40 chars per line at this font size
+    chars_per_line = int(box_width / (font_size * 0.6))
+    estimated_lines = max(1, (text_length // chars_per_line) + 1)
+    line_height = int(font_size * 1.4)
+    box_height = (estimated_lines * line_height) + 40  # 40px padding
+    
+    # Position in bottom middle
+    margin_bottom = int(height * 0.05)  # 5% margin from bottom
+    box_x = (width - box_width) // 2  # Center horizontally
+    box_y = height - box_height - margin_bottom
+    
+    # Ensure box doesn't go off screen
+    box_y = max(0, box_y)
+    
+    return {
+        "box_x": box_x,
+        "box_y": box_y,
+        "box_width": box_width,
+        "box_height": box_height,
+        "font_size": font_size,
+        "text_color": "#FFFFFF",  # White text for readability
+        "use_brand_color": False,
+        "background_opacity": 0.7,  # Semi-transparent dark background
+        "alignment": "center",
+        "reasoning": f"Bottom middle placement: {box_width}x{box_height}px box at ({box_x},{box_y}), font size {font_size}pt for {text_length} chars"
+    }
 
 
 def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list:
@@ -257,12 +199,12 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list:
     return lines
 
 
-async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposed):
+async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposeDone):
     """
     Add campaign message text to the branded image.
     
     Args:
-        image_request: BrandComposed protobuf message
+        image_request: BrandComposeDone protobuf message
         
     Returns:
         dict: Text overlaid image details
@@ -337,13 +279,14 @@ async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposed):
     logger.info(f"  🎨 Brand color: {brand_color}")
     
     # Download branded image from S3
-    branded_s3_uri = image_request.branded_s3_uri
+    branded_s3_uri = image_request.s3_uri_branded
     logger.info(f"  📥 Downloading branded image from: {branded_s3_uri}")
     
     # Parse S3 URI
     s3_parts = branded_s3_uri.replace('s3://', '').split('/', 1)
     bucket, key = s3_parts
     
+    # Download image from S3
     branded_obj = s3_client.get_object(Bucket=bucket, Key=key)
     image_data = branded_obj['Body'].read()
     
@@ -354,9 +297,9 @@ async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposed):
     width, height = img.size
     logger.info(f"  📐 Image size: {width}x{height}")
     
-    # Analyze image for optimal text placement
-    logger.info(f"  🤖 Analyzing image for optimal text placement...")
-    text_placement = await analyze_text_placement(image_data, width, height, campaign_message, brand_color)
+    # Calculate text placement in bottom middle (code-based, no LLM)
+    logger.info(f"  📐 Calculating text placement for bottom middle...")
+    text_placement = calculate_bottom_middle_placement(width, height, campaign_message, brand_color)
     
     # Create drawing context
     draw = ImageDraw.Draw(img)
@@ -575,7 +518,7 @@ async def main():
         readiness_probe.update_last_seen()
         try:
             # Parse protobuf
-            brand_composed = brand_compose_pb2.BrandComposed()
+            brand_composed = brand_compose_pb2.BrandComposeDone()
             brand_composed.ParseFromString(msg.data)
             
             # Overlay text
@@ -606,7 +549,7 @@ async def main():
         max_reconnect_attempts=NATS_MAX_RECONNECT_ATTEMPTS,
         ack_wait=180,  # 3 minutes to process
         max_deliver=3,  # Retry up to 3 times
-        proto_message_type=brand_compose_pb2.BrandComposed
+        proto_message_type=brand_compose_pb2.BrandComposeDone
     )
     
     subscriber.set_event_handler(handle_brand_composed)

@@ -49,10 +49,13 @@ OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "dall-e-3")
 OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "standard")
 
 # DALL-E 3 supported sizes
+# Note: DALL-E 3 only supports 1024x1024, 1792x1024, and 1024x1792
+# 4:5 ratio (Instagram portrait) uses 1024x1792 (9:16) as closest approximation
 DALLE3_SIZES = {
     "1x1": "1024x1024",
     "16x9": "1792x1024",
-    "9x16": "1024x1792"
+    "9x16": "1024x1792",
+    "4x5": "1024x1792"  # Instagram portrait - using 9:16 as closest match
 }
 
 # MinIO/S3 Configuration
@@ -65,8 +68,8 @@ S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "creative-assets")
 READINESS_TIME_OUT = int(os.getenv('IMAGE_GENERATOR_READINESS_TIME_OUT', 500))
 
 # NATS Stream configuration
-CREATIVE_GENERATE_STREAM_NAME = "creative-generate-stream"
-CREATIVE_GENERATE_REQUEST_SUBJECT = "creative.generate.request"
+CREATIVE_GENERATE_STREAM_NAME = "creative-generate-done-stream"
+CREATIVE_GENERATE_DONE_SUBJECT = "creative.generate.done"
 IMAGE_GENERATE_STREAM_NAME = "image-generate-stream"
 IMAGE_GENERATED_SUBJECT = "image.generated"
 
@@ -103,11 +106,7 @@ async def generate_image(creative_request: creative_generate_pb2.CreativeGenerat
         
         # Get aspect ratios from campaign output configuration
         aspect_ratios = campaign.get("output", {}).get("aspect_ratios", ["1x1"])
-        # Use the first aspect ratio for now (TODO: generate for all aspect ratios)
-        aspect_ratio = aspect_ratios[0] if aspect_ratios else "1x1"
-        image_size = DALLE3_SIZES.get(aspect_ratio, "1024x1024")
-        
-        logger.info(f"  📐 Using aspect ratio: {aspect_ratio} -> {image_size}")
+        logger.info(f"  📐 Generating {len(aspect_ratios)} aspect ratio(s): {', '.join(aspect_ratios)}")
         
         # Get the creative content from MongoDB
         creative = await db.creatives.find_one({
@@ -119,7 +118,7 @@ async def generate_image(creative_request: creative_generate_pb2.CreativeGenerat
             logger.error(f"❌ No creative found for {campaign_id}:{locale}")
             return None
         
-        # Build DALL-E prompt from creative content
+        # Build DALL-E prompt from creative content (same for all aspect ratios)
         # NOTE: NO TEXT should be in the image - text overlay happens in a later pipeline stage
         prompt = f"""Create a professional beauty/cosmetics product advertisement image WITHOUT any text, words, or typography.
 
@@ -136,72 +135,86 @@ Requirements:
 - Leave space for text overlay (avoid cluttered edges)
 """
         
-        logger.info(f"  🤖 Calling OpenAI DALL-E {OPENAI_IMAGE_MODEL}...")
-        logger.info(f"  📝 Prompt: {prompt[:200]}...")
+        # Generate images for ALL aspect ratios
+        generated_images = []
         
-        # Call DALL-E
-        response = await openai_client.images.generate(
-            model=OPENAI_IMAGE_MODEL,
-            prompt=prompt,
-            size=image_size,
-            quality=OPENAI_IMAGE_QUALITY,
-            n=1
-        )
+        for aspect_ratio in aspect_ratios:
+            image_size = DALLE3_SIZES.get(aspect_ratio, "1024x1024")
+            logger.info(f"  📐 Generating {aspect_ratio} ({image_size})...")
+            
+            logger.info(f"  🤖 Calling OpenAI DALL-E {OPENAI_IMAGE_MODEL}...")
+            
+            # Call DALL-E
+            response = await openai_client.images.generate(
+                model=OPENAI_IMAGE_MODEL,
+                prompt=prompt,
+                size=image_size,
+                quality=OPENAI_IMAGE_QUALITY,
+                n=1
+            )
+            
+            image_url = response.data[0].url
+            revised_prompt = response.data[0].revised_prompt if hasattr(response.data[0], 'revised_prompt') else prompt
+            
+            logger.info(f"  ✅ Image generated: {image_url}")
+            
+            # Download the image
+            logger.info(f"  📥 Downloading image...")
+            async with httpx.AsyncClient() as client:
+                img_response = await client.get(image_url)
+                img_response.raise_for_status()
+                image_data = img_response.content
+            
+            logger.info(f"  ✅ Image downloaded ({len(image_data)} bytes)")
+            
+            # Upload to MinIO/S3
+            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+            s3_key = f"campaigns/{campaign_id}/{locale}/{aspect_ratio}/generated_{timestamp}.png"
+            s3_uri = f"s3://{S3_BUCKET_NAME}/{s3_key}"
+            
+            logger.info(f"  📤 Uploading to S3: {s3_uri}")
+            
+            # TODO: Implement S3 upload using boto3
+            # For now, just log it
+            logger.info(f"  ⚠️  S3 upload not yet implemented, would upload to: {s3_uri}")
+            
+            # Save image metadata to MongoDB
+            image_doc = {
+                "campaign_id": campaign_id,
+                "locale": locale,
+                "aspect_ratio": aspect_ratio,
+                "image_url": image_url,
+                "s3_uri": s3_uri,
+                "prompt_used": revised_prompt,
+                "model": OPENAI_IMAGE_MODEL,
+                "size": image_size,
+                "quality": OPENAI_IMAGE_QUALITY,
+                "status": "generated",
+                "generated_at": datetime.utcnow(),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            await db.images.insert_one(image_doc)
+            logger.info(f"  💾 Saved image metadata to MongoDB: {campaign_id}:{locale}:{aspect_ratio}")
+            
+            generated_images.append({
+                "aspect_ratio": aspect_ratio,
+                "image_url": image_url,
+                "s3_uri": s3_uri
+            })
         
-        image_url = response.data[0].url
-        revised_prompt = response.data[0].revised_prompt if hasattr(response.data[0], 'revised_prompt') else prompt
-        
-        logger.info(f"  ✅ Image generated: {image_url}")
-        
-        # Download the image
-        logger.info(f"  📥 Downloading image...")
-        async with httpx.AsyncClient() as client:
-            img_response = await client.get(image_url)
-            img_response.raise_for_status()
-            image_data = img_response.content
-        
-        logger.info(f"  ✅ Image downloaded ({len(image_data)} bytes)")
-        
-        # Upload to MinIO/S3
-        s3_key = f"campaigns/{campaign_id}/{locale}/generated_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.png"
-        s3_uri = f"s3://{S3_BUCKET_NAME}/{s3_key}"
-        
-        logger.info(f"  📤 Uploading to S3: {s3_uri}")
-        
-        # TODO: Implement S3 upload using boto3
-        # For now, just log it
-        logger.info(f"  ⚠️  S3 upload not yet implemented, would upload to: {s3_uri}")
-        
-        # Save image metadata to MongoDB
-        image_doc = {
-            "campaign_id": campaign_id,
-            "locale": locale,
-            "image_url": image_url,
-            "s3_uri": s3_uri,
-            "prompt_used": revised_prompt,
-            "model": OPENAI_IMAGE_MODEL,
-            "aspect_ratio": aspect_ratio,
-            "size": image_size,
-            "quality": OPENAI_IMAGE_QUALITY,
-            "status": "generated",
-            "generated_at": datetime.utcnow(),
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
-        
-        await db.images.insert_one(image_doc)
-        logger.info(f"  💾 Saved image metadata to MongoDB: {campaign_id}:{locale}")
+        logger.info(f"  🎉 Generated {len(generated_images)} images for {campaign_id}:{locale}")
         
         return {
-            "image_url": image_url,
-            "s3_uri": s3_uri,
-            "prompt_used": revised_prompt
+            "campaign_id": campaign_id,
+            "locale": locale,
+            "images": generated_images
         }
         
     except Exception as e:
         logger.error(f"❌ Error generating image: {e}", exc_info=True)
         raise
-
 
 async def handle_creative_request(msg: Msg):
     """
@@ -211,33 +224,40 @@ async def handle_creative_request(msg: Msg):
     
     try:
         # Parse the message
-        creative_request = creative_generate_pb2.CreativeGenerateRequest()
-        creative_request.ParseFromString(msg.data)
+        creative_done = creative_generate_pb2.CreativeGenerateDone()
+        creative_done.ParseFromString(msg.data)
         
-        logger.info(f"✉️ Received creative.generate.request: {creative_request.campaign_id}:{creative_request.locale}")
+        logger.info(f"✉️ Received creative.generate.done: {creative_done.campaign_id}:{creative_done.locale}")
         
-        # Generate image
-        result = await generate_image(creative_request)
+        # Generate image (convert done message to request-like object for compatibility)
+        class CreativeRequest:
+            def __init__(self, done_msg):
+                self.campaign_id = done_msg.campaign_id
+                self.locale = done_msg.locale
+                self.correlation_id = done_msg.correlation_id
         
-        if result:
-            # Publish to next stage
-            image_generated = image_generate_pb2.ImageGenerated(
-                campaign_id=creative_request.campaign_id,
-                locale=creative_request.locale,
-                product_id="",  # TODO: Get from campaign data
-                image_url=result["image_url"],
-                s3_uri=result["s3_uri"],
-                prompt_used=result["prompt_used"],
-                status="generated",
-                generated_at=datetime.utcnow().isoformat() + "Z"
-            )
-            
-            await publisher.publish(image_generated)
-            logger.info(f"📤 Published image.generated for {creative_request.campaign_id}:{creative_request.locale}")
+        result = await generate_image(CreativeRequest(creative_done))
+        
+        if result and "images" in result:
+            # Publish one message per aspect ratio
+            for img in result["images"]:
+                image_generated = image_generate_pb2.ImageGenerated(
+                    campaign_id=creative_done.campaign_id,
+                    locale=creative_done.locale,
+                    product_id="",  # TODO: Get from campaign data
+                    image_url=img["image_url"],
+                    s3_uri=img["s3_uri"],
+                    prompt_used="",  # Stored in MongoDB
+                    status="generated",
+                    generated_at=datetime.utcnow().isoformat() + "Z"
+                )
+                
+                await publisher.publish(image_generated)
+                logger.info(f"📤 Published image.generated for {creative_done.campaign_id}:{creative_done.locale}:{img['aspect_ratio']}")
         
         # Acknowledge the message
         await msg.ack()
-        logger.info(f"✅ Acknowledged creative.generate.request: {creative_request.campaign_id}:{creative_request.locale}")
+        logger.info(f"✅ Acknowledged creative.generate.done: {creative_done.campaign_id}:{creative_done.locale}")
         
     except Exception as e:
         logger.error(f"❌ Error processing creative request: {e}", exc_info=True)
@@ -285,20 +305,20 @@ async def main():
     subscriber = JetStreamEventSubscriber(
         nats_url=NATS_URL,
         stream_name=CREATIVE_GENERATE_STREAM_NAME,
-        subject=CREATIVE_GENERATE_REQUEST_SUBJECT,
+        subject=CREATIVE_GENERATE_DONE_SUBJECT,
         connect_timeout=NATS_CONNECT_TIMEOUT,
         reconnect_time_wait=NATS_RECONNECT_TIME_WAIT,
         max_reconnect_attempts=NATS_MAX_RECONNECT_ATTEMPTS,
         ack_wait=180,  # 3 minutes to process (includes DALL-E call and image download)
         max_deliver=3,  # Retry up to 3 times
-        proto_message_type=creative_generate_pb2.CreativeGenerateRequest
+        proto_message_type=creative_generate_pb2.CreativeGenerateDone
     )
     
     subscriber.set_event_handler(handle_creative_request)
     
     try:
         await subscriber.connect_and_subscribe()
-        logger.info(f"✅ Subscribed to {CREATIVE_GENERATE_REQUEST_SUBJECT}")
+        logger.info(f"✅ Subscribed to {CREATIVE_GENERATE_DONE_SUBJECT}")
     except Exception as e:
         logger.error(f"❌ Failed to connect or subscribe to NATS: {e}")
         return

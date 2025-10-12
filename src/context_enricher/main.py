@@ -15,6 +15,8 @@ from nats.aio.msg import Msg
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
+from typing import List
 
 from src.lib_py.gen_types import context_enrich_pb2
 from src.lib_py.middlewares.jetstream_publisher import JetStreamPublisher
@@ -68,6 +70,19 @@ readiness_probe: ReadinessProbe = None
 
 # Removed - initialization moved to main() following sentinel-AI pattern
 
+# ————— Pydantic Models for Structured LLM Output —————
+
+class MarketInsightsResponse(BaseModel):
+    """Structured response from LLM for market insights."""
+    market_trends: List[str] = Field(..., description="List of 3-5 current market trends")
+    seasonal_context: str = Field(..., description="Current seasonal themes and how to leverage them")
+    cultural_notes: str = Field(..., description="Cultural sensitivities and preferences")
+    color_preferences: List[str] = Field(..., description="List of 3-5 colors that resonate with audience")
+    messaging_tone: str = Field(..., description="Recommended tone and style for messaging")
+    visual_style: str = Field(..., description="Visual aesthetics that appeal to audience")
+    competitor_insights: List[str] = Field(..., description="List of 2-3 competitor strategy insights")
+    regulatory_notes: str = Field(..., description="Regulatory or compliance considerations")
+
 
 async def enrich_context(request: context_enrich_pb2.ContextEnrichRequest):
     """
@@ -89,23 +104,23 @@ Campaign Details:
 - Products: {', '.join(request.product_names)}
 - Current Date: {current_date}
 
-Provide actionable insights in JSON format with the following structure:
+Respond with a JSON object in this EXACT format:
 {{
-  "market_trends": ["list of 3-5 current market trends relevant to this region and products"],
-  "seasonal_context": "description of current seasonal themes and how to leverage them",
-  "cultural_notes": "cultural sensitivities and preferences for {request.locale} locale",
-  "color_preferences": ["list of 3-5 colors that resonate with this audience in {request.region}"],
-  "messaging_tone": "recommended tone and style for messaging",
-  "visual_style": "description of visual aesthetics that appeal to this audience",
-  "competitor_insights": ["list of 2-3 insights about competitor strategies"],
-  "regulatory_notes": "any regulatory or compliance considerations for {request.region}"
+  "market_trends": ["trend 1", "trend 2", "trend 3"],
+  "seasonal_context": "description of seasonal themes",
+  "cultural_notes": "cultural sensitivities and preferences",
+  "color_preferences": ["color 1", "color 2", "color 3"],
+  "messaging_tone": "recommended tone and style",
+  "visual_style": "visual aesthetics description",
+  "competitor_insights": ["insight 1", "insight 2"],
+  "regulatory_notes": "regulatory considerations"
 }}
 
-Be specific, actionable, and data-driven. Return ONLY valid JSON."""
+Be specific, actionable, and data-driven. Return ONLY the JSON object, no other text."""
 
         logger.info(f"  🤖 Calling OpenAI {OPENAI_TEXT_MODEL}...")
         
-        # Call OpenAI
+        # Call OpenAI with JSON mode
         response = await openai_client.chat.completions.create(
             model=OPENAI_TEXT_MODEL,
             messages=[
@@ -117,8 +132,9 @@ Be specific, actionable, and data-driven. Return ONLY valid JSON."""
             max_tokens=1500
         )
         
-        # Parse LLM response
-        llm_insights = json.loads(response.choices[0].message.content)
+        # Parse and validate with Pydantic
+        json_response = json.loads(response.choices[0].message.content)
+        llm_insights = MarketInsightsResponse(**json_response)
         logger.info(f"  ✅ Received insights from OpenAI ({response.usage.total_tokens} tokens)")
         
         # Build enriched context
@@ -131,14 +147,14 @@ Be specific, actionable, and data-driven. Return ONLY valid JSON."""
             "product_names": list(request.product_names),
             
             # LLM-generated insights
-            "market_trends": llm_insights.get("market_trends", []),
-            "seasonal_context": llm_insights.get("seasonal_context", ""),
-            "cultural_notes": llm_insights.get("cultural_notes", ""),
-            "color_preferences": llm_insights.get("color_preferences", []),
-            "messaging_tone": llm_insights.get("messaging_tone", ""),
-            "visual_style": llm_insights.get("visual_style", ""),
-            "competitor_insights": llm_insights.get("competitor_insights", []),
-            "regulatory_notes": llm_insights.get("regulatory_notes", ""),
+            "market_trends": llm_insights.market_trends,
+            "seasonal_context": llm_insights.seasonal_context,
+            "cultural_notes": llm_insights.cultural_notes,
+            "color_preferences": llm_insights.color_preferences,
+            "messaging_tone": llm_insights.messaging_tone,
+            "visual_style": llm_insights.visual_style,
+            "competitor_insights": llm_insights.competitor_insights,
+            "regulatory_notes": llm_insights.regulatory_notes,
             
             # Metadata
             "enriched_at": datetime.utcnow().isoformat() + "Z",
@@ -158,12 +174,12 @@ Be specific, actionable, and data-driven. Return ONLY valid JSON."""
         # Build ContextPack protobuf message
         context_pack = context_enrich_pb2.ContextPack(
             locale=request.locale,
-            culture_notes=llm_insights.get("cultural_notes", ""),
-            tone=llm_insights.get("messaging_tone", ""),
-            dos=llm_insights.get("market_trends", []),
-            donts=llm_insights.get("competitor_insights", []),
-            banned_words=[],  # TODO: Add from LLM or brand guidelines
-            legal_guidelines=llm_insights.get("regulatory_notes", "")
+            culture_notes=llm_insights.cultural_notes,
+            tone=llm_insights.messaging_tone,
+            dos=llm_insights.market_trends,
+            donts=llm_insights.competitor_insights,
+            banned_words=[],  # TODO: Add from brand guidelines
+            legal_guidelines=llm_insights.regulatory_notes
         )
         
         # Publish context.enrich.ready

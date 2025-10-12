@@ -108,7 +108,7 @@ def test_create_campaign():
             "overlay_text_position": "bottom"
         },
         "output": {
-            "aspect_ratios": ["1x1", "9x16", "16x9"],
+            "aspect_ratios": ["1x1", "4x5", "9x16", "16x9"],
             "format": "png",
             "s3_prefix": "outputs/"
         }

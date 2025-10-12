@@ -6,6 +6,7 @@ Consumes enriched context and generates creative content using LLM.
 
 import os
 import asyncio
+import json
 import logging
 import threading
 from datetime import datetime
@@ -13,6 +14,8 @@ from dotenv import load_dotenv
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
+from typing import List
 
 from src.lib_py.gen_types import creative_generate_pb2, context_enrich_pb2
 from src.lib_py.middlewares.jetstream_publisher import JetStreamPublisher
@@ -44,8 +47,8 @@ READINESS_TIME_OUT = int(os.getenv('CREATIVE_GENERATOR_READINESS_TIME_OUT', '500
 # NATS Stream configuration
 CONTEXT_READY_STREAM_NAME = "context-ready-stream"
 CONTEXT_ENRICH_READY_SUBJECT = "context.enrich.ready"
-CREATIVE_GENERATE_STREAM_NAME = "creative-generate-stream"
-CREATIVE_GENERATE_REQUEST_SUBJECT = "creative.generate.request"
+CREATIVE_GENERATE_STREAM_NAME = "creative-generate-done-stream"
+CREATIVE_GENERATE_DONE_SUBJECT = "creative.generate.done"
 
 # Global clients
 mongo_client = None
@@ -54,6 +57,15 @@ publisher = None
 subscriber = None
 openai_client = None
 readiness_probe = None
+
+# ————— Pydantic Models for Structured LLM Output —————
+
+class CampaignContentResponse(BaseModel):
+    """Structured response from LLM for campaign creative content."""
+    headline: str = Field(..., description="Catchy campaign headline (5-15 words)")
+    description: str = Field(..., description="Short campaign description (50-100 words)")
+    call_to_action: str = Field(..., description="Call-to-action text (3-8 words)")
+    visual_elements: List[str] = Field(..., description="List of 3-5 suggested visual elements")
 
 # ————— Business Logic —————
 
@@ -75,8 +87,7 @@ async def generate_creative(context_ready, context_pack):
     
     try:
         # Prepare the prompt for creative generation
-        prompt = f"""
-        Based on the following context, generate creative content:
+        prompt = f"""Based on the following context, generate creative content:
         
         Campaign ID: {campaign_id}
         Locale: {locale}
@@ -88,35 +99,57 @@ async def generate_creative(context_ready, context_pack):
         Banned Words: {', '.join(context_pack.banned_words)}
         Legal Guidelines: {context_pack.legal_guidelines}
         
-        Generate creative content including:
-        1. A catchy headline
-        2. A short description (50-100 words)
-        3. A call-to-action
-        4. Suggested visual elements
+        Respond with a JSON object in this EXACT format:
+        {{
+          "headline": "catchy headline here (5-15 words)",
+          "description": "compelling description here (50-100 words)",
+          "call_to_action": "clear CTA here (3-8 words)",
+          "visual_elements": ["element 1", "element 2", "element 3"]
+        }}
         
-        Ensure the content respects all guidelines and cultural notes.
-        """
+        Ensure ALL content respects the guidelines and cultural notes. Return ONLY the JSON object."""
         
-        # Call OpenAI
+        # Call OpenAI with structured output
         logger.info(f"  🤖 Calling OpenAI {OPENAI_TEXT_MODEL}...")
         response = await openai_client.chat.completions.create(
             model=OPENAI_TEXT_MODEL,
             messages=[
-                {"role": "system", "content": "You are a creative director for digital marketing campaigns."},
+                {"role": "system", "content": "You are a creative director for digital marketing campaigns. Always respond with valid JSON."},
                 {"role": "user", "content": prompt}
             ],
+            response_format={"type": "json_object"},
             max_tokens=500,
             temperature=0.7
         )
         
-        creative_content = response.choices[0].message.content
-        logger.info(f"  ✅ Generated creative content ({len(creative_content)} chars)")
+        # Parse and validate with Pydantic
+        json_response = json.loads(response.choices[0].message.content)
+        parsed_content = CampaignContentResponse(**json_response)
+        
+        # Format as markdown for storage (backward compatible)
+        creative_content = f"""### 1. Catchy Headline
+{parsed_content.headline}
+
+### 2. Short Description
+{parsed_content.description}
+
+### 3. Call-to-Action
+{parsed_content.call_to_action}
+
+### 4. Suggested Visual Elements
+{chr(10).join(f'- {elem}' for elem in parsed_content.visual_elements)}
+"""
+        logger.info(f"  ✅ Generated creative content: {parsed_content.headline}")
         
         # Save to MongoDB
         creative_doc = {
             "campaign_id": campaign_id,
             "locale": locale,
             "content": creative_content,
+            "headline": parsed_content.headline,
+            "description": parsed_content.description,
+            "call_to_action": parsed_content.call_to_action,
+            "visual_elements": parsed_content.visual_elements,
             "status": "generated",
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
@@ -151,17 +184,18 @@ async def handle_creative_request(msg):
         logger.info(f"✉️ Received context.enrich.ready: {context_ready.campaign_id}:{context_ready.locale}")
         
         # Generate creative
-        await generate_creative(context_ready, context_pack)
+        creative_content = await generate_creative(context_ready, context_pack)
         
-        # Publish to next stage (approval)
-        generate_request = creative_generate_pb2.CreativeGenerateRequest(
+        # Publish creative.generate.done event
+        done_msg = creative_generate_pb2.CreativeGenerateDone(
             campaign_id=context_ready.campaign_id,
             locale=context_ready.locale,
-            status="generated"
+            correlation_id=context_ready.correlation_id,
+            timestamp=datetime.utcnow().isoformat() + "Z"
         )
         
-        await publisher.publish(generate_request)
-        logger.info(f"📤 Published creative.generate.request for {context_ready.campaign_id}:{context_ready.locale}")
+        await publisher.publish(done_msg)
+        logger.info(f"📤 Published creative.generate.done for {context_ready.campaign_id}:{context_ready.locale}")
         
         # Acknowledge the message
         await msg.ack()
@@ -210,15 +244,15 @@ async def main():
         logger.error(f"❌ Failed to connect to MongoDB: {e}")
         return
     
-    # 4. Initialize creative.generate.request publisher
+    # 4. Initialize creative.generate.done publisher
     publisher = JetStreamPublisher(
-        subject=CREATIVE_GENERATE_REQUEST_SUBJECT,
+        subject=CREATIVE_GENERATE_DONE_SUBJECT,
         stream_name=CREATIVE_GENERATE_STREAM_NAME,
         nats_url=NATS_URL,
         nats_reconnect_time_wait=NATS_RECONNECT_TIME_WAIT,
         nats_connect_timeout=NATS_CONNECT_TIMEOUT,
         nats_max_reconnect_attempts=NATS_MAX_RECONNECT_ATTEMPTS,
-        message_type="CreativeGenerateRequest"
+        message_type="CreativeGenerateDone"
     )
     
     try:

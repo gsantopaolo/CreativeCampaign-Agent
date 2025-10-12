@@ -2,12 +2,6 @@ networks:
   creative-backend-network:
     driver: bridge
 
-volumes:
-  mongodb-data:
-  nats-data:
-  minio-data:
-  portainer-data:
-
 services:
   # ————— MongoDB —————
   mongodb:
@@ -20,7 +14,7 @@ services:
     environment:
       MONGO_INITDB_DATABASE: creative_campaign
     volumes:
-      - mongodb-data:/data/db
+      - ./data/mongodb:/data/db
     networks:
       - creative-backend-network
     healthcheck:
@@ -43,7 +37,7 @@ services:
       - "-m=8222"    # Enable monitoring
       - "--store_dir=/data"
     volumes:
-      - nats-data:/data
+      - ./data/nats:/data
     networks:
       - creative-backend-network
     healthcheck:
@@ -66,7 +60,7 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
     volumes:
-      - minio-data:/data
+      - ./data/minio:/data
     networks:
       - creative-backend-network
     healthcheck:
@@ -217,7 +211,7 @@ services:
     command: -H unix:///var/run/docker.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - portainer-data:/data
+      - ./data/portainer:/data
     ports:
       - "9002:9000"  # Web UI (avoiding MinIO's 9000 and 9001)
       - "9443:9443"  # HTTPS

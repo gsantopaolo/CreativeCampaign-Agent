@@ -1,1 +1,0 @@
-# This file makes 'src/lib_py' a Python package.

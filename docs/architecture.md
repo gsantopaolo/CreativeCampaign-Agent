@@ -15,7 +15,7 @@ Each service is independently deployable, horizontally scalable, and communicate
 for high throughput and low latency. With Kubernetes auto-scaling and NATS JetStream for 
 durable streams, this architecture can serve thousands of campaigns daily.
 
-> **For evaluators**: See [`docs/why-microservices.md`](why-microservices.md) for architectural trade-offs and [`docs/simplified-alternative.md`](simplified-alternative.md) for a monolithic approach.
+> **For evaluators**: See [why-microservices.md](why-microservices.md) for architectural trade-offs and [simplified-alternative.md](simplified-alternative.md) for a monolithic approach.
 
 ---
 

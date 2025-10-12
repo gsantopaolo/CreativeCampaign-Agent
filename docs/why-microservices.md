@@ -74,7 +74,7 @@ This POC uses a **microservices architecture** not because it's trendy, but beca
 
 ### Simplified Alternative Provided
 
-See [`docs/simplified-alternative.md`](simplified-alternative.md) for a **300-line monolithic Python app** that satisfies the core requirements. We include both to show:
+See [simplified-alternative.md](simplified-alternative.md) for a **300-line monolithic Python app** that satisfies the core requirements. We include both to show:
 - **Understanding of trade-offs**
 - **Ability to scale when needed**
 - **Pragmatism over dogma**

@@ -17,39 +17,38 @@ This isn't just a coding exercise—it's built like a real customer deployment. 
 
 ### What Makes This Production-Ready?
 
-- 🔄 **Event-Driven**: NATS JetStream for reliable, scalable messaging
-- 🛡️ **Fault Tolerant**: Retries, health checks, graceful degradation
-- 📊 **Observable**: Structured logging with emojis for easy scanning
-- 🤖 **AI-Powered**: GPT-4o-mini vision analyzes images for optimal logo placement
-- 🏢 **Enterprise Ready**: S3 storage, MongoDB, Docker Compose
+This POC demonstrates how to build production-ready creative automation at scale:
 
-> **For evaluators**: This shows how a 2-day customer POC would look at scale. See [`docs/simplified-alternative.md`](docs/simplified-alternative.md) for a minimal approach, and [`docs/why-microservices.md`](docs/why-microservices.md) for architectural trade-offs.
+🔄 **Event-driven architecture** that scales horizontally  
+🛡️ **Fault Tolerant**: Retries, health checks, graceful degradation
+🤖 **AI-powered intelligence** for branding, context enrichment, localization and image analysis for optimal logo placement
+✅ **Production patterns** you'd actually deploy to customers  
+✅ **Observable & reliable** with health checks and retries  
+
+Built in the spirit of how a Forward Deployed Engineer would approach a 2-day customer POC—showing both technical depth and pragmatic engineering judgment.
+See [`docs/simplified-alternative.md`](docs/simplified-alternative.md) for a minimal approach, and [`docs/why-microservices.md`](docs/why-microservices.md) for architectural trade-offs.
 
 ---
 
 ## 📋 What It Does
 
-Turns a **campaign brief** into **localized creatives** (images + copy) for multiple products and languages, with **AI-powered branding**, **multi-format export**, and **production-ready reliability**.
+Turns a **campaign brief** into **localized creatives** (images + copy) for multiple 
+products and languages, with **AI-powered branding**, **multi-format export**, 
+and **production-ready reliability**.
 
-> Full details:
+> **📚 Documentation:**
 >
-> * **Architecture & orchestration** → [`docs/architecture.md`](docs/architecture.md)
-> * **Why this architecture?** → [`docs/why-microservices.md`](docs/why-microservices.md)
-> * **Simplified alternative** → [`docs/simplified-alternative.md`](docs/simplified-alternative.md)
+> * **Challenge & Requirements** → [`challenge.md`](challenge.md) · [`docs/requirements.md`](docs/requirements.md)
+> * **Architecture & Design** → [`docs/architecture.md`](docs/architecture.md) · [`docs/architecture-diagram.md`](docs/architecture-diagram.md)
+> * **Agentic System Design** → [`docs/agentic-system-design.md`](docs/agentic-system-design.md)
+> * **AI-Powered Features** → [`docs/ai-logo-placement.md`](docs/ai-logo-placement.md)
+> * **Implementation Patterns** → [`docs/implementation-patterns.md`](docs/implementation-patterns.md)
 > * **API & Schema Reference** → [`docs/schemas.md`](docs/schemas.md)
-> * **Implementation patterns** → [`docs/implementation-patterns.md`](docs/implementation-patterns.md)
+> * **Setup & Configuration** → [`docs/setup.md`](docs/setup.md)
+> * **Architecture Trade-offs** → [`docs/why-microservices.md`](docs/why-microservices.md) · [`docs/simplified-alternative.md`](docs/simplified-alternative.md)
+> * **Stakeholder Communication** → [`docs/stakeholder-email-sample.md`](docs/stakeholder-email-sample.md)
+> * **Change Log** → [`docs/changelog.md`](docs/changelog.md)
 
----
-
-## ⚡ TL;DR
-
-* **Stack:** Python · FastAPI · Streamlit · NATS JetStream · MongoDB · MinIO/S3
-* **Architecture:** 5 worker services + API + UI (event-driven)
-* **AI:** OpenAI DALL-E 3 (images) + GPT-4o-mini (text + vision analysis)
-* **Smart Branding:** AI vision analyzes each image to find the perfect logo spot 🎯
-* **Localization:** Context-aware generation for culturally-appropriate copy 🌍
-* **Multi-Format:** 4 aspect ratios per creative (1x1, 4x5, 9x16, 16x9) 📐
-* **Reliability:** Automatic retries, health checks, structured logging ✅
 
 ---
 
@@ -61,19 +60,33 @@ Turns a **campaign brief** into **localized creatives** (images + copy) for mult
 
 ### Step 1: Clone & Configure
 
+#### Clone the repository
 ```bash
-# Clone the repository
 git clone https://github.com/gsantopaolo/CreativeCampaign-Agent.git
 cd CreativeCampaign-Agent
-
-# Copy environment template
-cp deployment/.env.example deployment/.env
-
-# Edit and add your OPENAI_API_KEY in the .env file
 ```
+#### Copy environment template
 ```bash
-### Step 2: Start All Services
+cp deployment/.env.example deployment/.env
+```
+#### Edit and add your OPENAI_API_KEY in the .env file
+- Open the newly created .env file with your favorite editor
+- Generate and API key from [OpenAI API Dashboard](https://platform.openai.com/api-keys) 
+- Copy the key
+- Paste it on OPENAI_API_KEY= 
 
+#### Make scripts executable (first time only)
+```bash
+chmod +x start.sh stop.sh
+```
+
+### Step 2: Start All Services
+To start all services:
+```bash
+./start.sh  
+```
+To stop all services once you're done:
+```bash
 ./start.sh  
 ```
 
@@ -116,7 +129,7 @@ Once all services are running, you can access the following interfaces:
    - **Brand Color**: Pick your brand color
    - **Aspect Ratios**: Select all 4 (1x1, 4x5, 9x16, 16x9)
 3. Click **"🚀 Launch Campaign"**
-4. Watch the pipeline execute in real-time!
+4. Watch the pipeline execute in real-time! via [Portainer logs](http://localhost:9002)  
 
 **Expected time:** 2-5 minutes per locale/product combination
 
@@ -288,30 +301,13 @@ See the sequence and containers diagrams in `docs/architecture.md`.
   architecture.md                 # diagrams + Service Responsibilities & I/O matrix
   api-schema-reference.md         # REST models, NATS contracts, Mongo schemas, config
 
-/services
-  api-gateway/                    # FastAPI + Pydantic, publishes briefs.ingested etc.
-  ui-webapp/                      # Streamlit UI
-  orchestration-router/
+/src
+  api/                    # FastAPI + Pydantic, publishes briefs.ingested etc.
+  web/                      # Streamlit UI
   context-enricher/
   image-generator/
   brand-composer/
-  copy-generator/
-  compliance-checker/
-  overlay-composer/
-  scorer-selector/
-  approval-handler/
-  alert-dispatcher/               # plugins/alerts/{email.py,sms.py,nats.py,webhook.py}
-  guardian-dlq/
-  run-logger/
 
-/infra
-  docker-compose.yml              # NATS, Mongo, MinIO, Promtail, Prometheus, Grafana
-  grafana/                        # dashboards
-  promtail/                       # scrape configs
-
-/examples
-  briefs/                         # sample briefs
-  messages/                       # sample NATS payloads
 ```
 
 ---
@@ -422,24 +418,6 @@ s3://<bucket>/outputs/<campaign>/<locale>/<product>/
 
 ---
 
-## Observability
-
-* **Metrics:** `:9100/metrics` on each service (Prometheus scrape)
-* **Logs:** stdout → Promtail → **Loki** (search by `corr_id`, `campaign_id`, `locale`, `product_id`, `revision`)
-* **Dashboards:** Grafana panels for throughput, latency, DLQ, approval latency
-* **Tracing:** **Langtrace** around LLM/image calls
-
----
-
-## Alerts
-
-Pluggable **alert-dispatcher** routes events to sinks configured in `config.yaml`:
-
-* Email (SMTP), SMS (stub), Webhook, **NATS→UI**
-* DLQ incidents are enriched by **guardian-dlq** and escalated to ops
-
----
-
 ## NATS subjects (quick view)
 
 * Ingress/control: `briefs.ingested`, `creative.approved`, `creative.revision.requested`
@@ -473,8 +451,8 @@ Pluggable **alert-dispatcher** routes events to sinks configured in `config.yaml
 
 **Current Limitations:**
 - No authentication (Streamlit is open - add OAuth for production)
-- S3 upload partially implemented (metadata stored, files ready)
 - Single OpenAI provider (works great, but could add fallbacks)
+- Observability only via Portainer, shall be extended to use Grafana/Prometheus/Loki
 
 **Future Enhancements:**
 - 🔐 Add authentication & role-based access
@@ -485,13 +463,5 @@ Pluggable **alert-dispatcher** routes events to sinks configured in `config.yaml
 
 ---
 
-## 🎯 Summary
 
-This POC demonstrates how to build production-ready creative automation at scale:
 
-✅ **Event-driven architecture** that scales horizontally  
-✅ **AI-powered intelligence** for branding and localization  
-✅ **Production patterns** you'd actually deploy to customers  
-✅ **Observable & reliable** with health checks and retries  
-
-Built in the spirit of how a Forward Deployed Engineer would approach a 2-day customer POC—showing both technical depth and pragmatic engineering judgment.

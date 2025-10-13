@@ -63,49 +63,47 @@ Turns a **campaign brief** into **localized creatives** (images + copy) for mult
 
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/gsantopaolo/CreativeCampaign-Agent.git
 cd CreativeCampaign-Agent
 
-# Navigate to deployment directory
-cd deployment
-
 # Copy environment template
-cp .env.example .env
+cp deployment/.env.example deployment/.env
 
-# Edit and add your OPENAI_API_KEY
-nano .env  # or use your preferred editor
+# Edit and add your OPENAI_API_KEY in the .env file
 ```
-
+```bash
 ### Step 2: Start All Services
 
-```bash
-# Make scripts executable (first time only)
-chmod +x start.sh stop.sh
-
-# Start all services
-./start.sh
-
-# Or to rebuild containers
-./start.sh --build
+./start.sh  
 ```
-
-**Services starting:**
-- API Gateway (FastAPI) - `http://localhost:8000`
-- Web UI (Streamlit) - `http://localhost:8501`
-- MongoDB - `localhost:27017`
-- MinIO/S3 - `http://localhost:9000`
-- NATS JetStream - `localhost:4222`
-- 5 worker services (context-enricher, creative-generator, image-generator, brand-composer, text-overlay)
 
 ### Step 3: Access the UI
 
-```bash
-# Open in your browser
-open http://localhost:8501
+Once all services are running, you can access the following interfaces:
 
-# Or visit manually
-http://localhost:8501
-```
+#### Main Application
+- **Web UI (Streamlit)** - Create and manage campaigns  
+  [http://localhost:8501](http://localhost:8501)
+
+
+#### Management & Monitoring
+- **Portainer** - Container management and logs  
+  [http://localhost:9002](http://localhost:9002)  
+  *First-time setup: Create admin account on first visit*
+
+- **MongoDB Express** - Database browser  
+  [http://localhost:8081](http://localhost:8081)  
+  Username: `admin` | Password: `admin`
+
+- **MinIO Console** - S3 storage management  
+  [http://localhost:9001](http://localhost:9001)  
+  Username: `minioadmin` | Password: `minioadmin`
+
+- **NATS NUI** - Message queue monitoring  
+  [http://localhost:31311](http://localhost:31311)
+
+- **API Gateway (FastAPI)** - REST API and interactive docs  
+  [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ### Step 4: Create Your First Campaign
 
@@ -121,26 +119,6 @@ http://localhost:8501
 4. Watch the pipeline execute in real-time!
 
 **Expected time:** 2-5 minutes per locale/product combination
-
-### Managing Services
-
-```bash
-# View logs
-docker-compose logs -f
-
-# View logs for specific service
-docker-compose logs -f api
-
-# Stop all services
-./stop.sh
-
-# Or manually
-docker-compose down
-
-# Stop and remove all data (fresh start)
-docker-compose down -v
-rm -rf data/
-```
 
 ---
 

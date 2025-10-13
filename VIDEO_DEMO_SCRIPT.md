@@ -81,16 +81,19 @@ cd CreativeCampaign-Agent
 > "Clone the repository and navigate into the directory."
 
 ```bash
-# 2. Copy environment template
-cp deployment/.env.example deployment/.env
+# 2. Navigate to deployment directory
+cd deployment
+
+# 3. Copy environment template
+cp .env.example .env
 ```
-> "Copy the environment template. You'll need to add your OpenAI API key here."
+> "Navigate to the deployment directory and copy the environment template. You'll need to add your OpenAI API key here."
 
 **[Screen: Open deployment/.env in editor]**
 
 ```bash
 # Show the file
-cat deployment/.env
+cat .env
 ```
 > "Here's what the environment file looks like. The only thing you need to change is adding your OpenAI API key. Everything else is pre-configured."
 
@@ -105,11 +108,13 @@ OPENAI_API_KEY=sk-...your-key-here...
 **[Screen: Save and close]**
 
 ```bash
-# 3. Start all services
-cd deployment
-docker-compose up -d
+# 4. Make scripts executable (first time only)
+chmod +x start.sh stop.sh
+
+# 5. Start all services
+./start.sh
 ```
-> "Now we start all services with Docker Compose. This will pull images and start 7 services: the API, web UI, and 5 worker services."
+> "Make the scripts executable, then run start.sh. This will create data directories and start all 7 services: the API, web UI, and 5 worker services."
 
 **[Screen: Show docker-compose output]**
 

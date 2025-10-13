@@ -66,18 +66,27 @@ Turns a **campaign brief** into **localized creatives** (images + copy) for mult
 git clone <repo-url>
 cd CreativeCampaign-Agent
 
+# Navigate to deployment directory
+cd deployment
+
 # Copy environment template
-cp deployment/.env.example deployment/.env
+cp .env.example .env
 
 # Edit and add your OPENAI_API_KEY
-nano deployment/.env  # or use your preferred editor
+nano .env  # or use your preferred editor
 ```
 
 ### Step 2: Start All Services
 
 ```bash
-cd deployment
-docker-compose up -d
+# Make scripts executable (first time only)
+chmod +x start.sh stop.sh
+
+# Start all services
+./start.sh
+
+# Or to rebuild containers
+./start.sh --build
 ```
 
 **Services starting:**
@@ -112,6 +121,26 @@ http://localhost:8501
 4. Watch the pipeline execute in real-time!
 
 **Expected time:** 2-5 minutes per locale/product combination
+
+### Managing Services
+
+```bash
+# View logs
+docker-compose logs -f
+
+# View logs for specific service
+docker-compose logs -f api
+
+# Stop all services
+./stop.sh
+
+# Or manually
+docker-compose down
+
+# Stop and remove all data (fresh start)
+docker-compose down -v
+rm -rf data/
+```
 
 ---
 

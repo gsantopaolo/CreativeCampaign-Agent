@@ -86,7 +86,7 @@ To start all services:
 ```
 To stop all services once you're done:
 ```bash
-./start.sh  
+./stop.sh  
 ```
 
 ### Step 3: Access the UI

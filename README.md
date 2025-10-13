@@ -38,7 +38,7 @@ and **production-ready reliability**.
 
 > **📚 Documentation:**
 >
-> * **Challenge & Requirements** → [`challenge.md`](challenge.md) · [`docs/requirements.md`](docs/requirements.md)
+> * **Requirements** → [`docs/requirements.md`](docs/requirements.md)
 > * **Architecture & Design** → [`docs/architecture.md`](docs/architecture.md) · [`docs/architecture-diagram.md`](docs/architecture-diagram.md)
 > * **Agentic System Design** → [`docs/agentic-system-design.md`](docs/agentic-system-design.md)
 > * **AI-Powered Features** → [`docs/ai-logo-placement.md`](docs/ai-logo-placement.md)
@@ -46,8 +46,7 @@ and **production-ready reliability**.
 > * **API & Schema Reference** → [`docs/schemas.md`](docs/schemas.md)
 > * **Setup & Configuration** → [`docs/setup.md`](docs/setup.md)
 > * **Architecture Trade-offs** → [`docs/why-microservices.md`](docs/why-microservices.md) · [`docs/simplified-alternative.md`](docs/simplified-alternative.md)
-> * **Stakeholder Communication** → [`docs/stakeholder-email-sample.md`](docs/stakeholder-email-sample.md)
-> * **Change Log** → [`docs/changelog.md`](docs/changelog.md)
+> * **Stakeholder Communication** → [`docs/stakeholder-communication-agent.md`](docs/stakeholder-communication-agent.md)
 
 
 ---

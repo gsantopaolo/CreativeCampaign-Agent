@@ -361,8 +361,8 @@ async def compose_brand_elements(image_request: image_generate_pb2.ImageGenerate
         
         logger.info(f"  ✅ Branded image created ({len(branded_image_data)} bytes)")
         
-        # Upload to S3/MinIO
-        s3_key = f"campaigns/{campaign_id}/{locale}/branded_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.png"
+        # Upload to S3/MinIO with aspect ratio in path
+        s3_key = f"campaigns/{campaign_id}/{locale}/{aspect_ratio}/branded_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.png"
         branded_s3_uri = f"s3://{S3_BUCKET_NAME}/{s3_key}"
         
         try:

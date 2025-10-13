@@ -20,8 +20,8 @@ This isn't just a coding exercise—it's built like a real customer deployment. 
 This POC demonstrates how to build production-ready creative automation at scale:
 
 🔄 **Event-driven architecture** that scales horizontally  
-🛡️ **Fault Tolerant**: Retries, health checks, graceful degradation
-🤖 **AI-powered intelligence** for branding, context enrichment, localization and image analysis for optimal logo placement
+🛡️ **Fault Tolerant**: Retries, health checks, graceful degradation  
+🤖 **AI-powered intelligence** for branding, context enrichment, localization and image analysis for optimal logo placement  
 ✅ **Production patterns** you'd actually deploy to customers  
 ✅ **Observable & reliable** with health checks and retries  
 

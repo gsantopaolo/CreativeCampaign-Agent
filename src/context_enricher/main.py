@@ -89,36 +89,44 @@ async def enrich_context(request: context_enrich_pb2.ContextEnrichRequest):
     Enrich context for a campaign locale using OpenAI LLM.
     Generates market insights, trends, cultural notes, and creative guidance.
     """
-    logger.info(f"🔍 Enriching context for {request.campaign_id}:{request.locale}")
+    logger.info(f"🔍 Enriching context for {request.campaign_id}:{request.locale} in {request.region}")
     
     try:
-        # Build prompt for LLM
+        # Build prompt for LLM with explicit region/locale instructions
         current_date = datetime.utcnow().strftime("%B %Y")
         prompt = f"""You are a marketing insights expert. Generate comprehensive context for a beauty/cosmetics campaign.
 
+CRITICAL: Generate insights SPECIFICALLY for the {request.region} region and {request.locale} locale. 
+All market trends, cultural notes, and insights MUST be relevant to {request.region}, NOT other regions.
+
 Campaign Details:
-- Region: {request.region}
-- Locale: {request.locale}
-- Target Audience: {request.audience}
+- Target Region: {request.region}
+- Target Locale: {request.locale}
+- Target Audience: {request.audience} in {request.region}
 - Age Range: {request.age_min}-{request.age_max} years
 - Products: {', '.join(request.product_names)}
 - Current Date: {current_date}
 
+Generate market insights and cultural context SPECIFICALLY for the {request.region} market.
+
 Respond with a JSON object in this EXACT format:
 {{
-  "market_trends": ["trend 1", "trend 2", "trend 3"],
-  "seasonal_context": "description of seasonal themes",
-  "cultural_notes": "cultural sensitivities and preferences",
-  "color_preferences": ["color 1", "color 2", "color 3"],
-  "messaging_tone": "recommended tone and style",
-  "visual_style": "visual aesthetics description",
-  "competitor_insights": ["insight 1", "insight 2"],
-  "regulatory_notes": "regulatory considerations"
+  "market_trends": ["trend 1 in {request.region}", "trend 2 in {request.region}", "trend 3 in {request.region}"],
+  "seasonal_context": "seasonal themes and timing in {request.region}",
+  "cultural_notes": "cultural sensitivities and preferences specific to {request.region}",
+  "color_preferences": ["color 1 popular in {request.region}", "color 2", "color 3"],
+  "messaging_tone": "recommended tone for {request.region} audience",
+  "visual_style": "visual aesthetics that resonate in {request.region}",
+  "competitor_insights": ["competitor insight 1 in {request.region}", "insight 2"],
+  "regulatory_notes": "regulatory considerations specific to {request.region}"
 }}
 
-Be specific, actionable, and data-driven. Return ONLY the JSON object, no other text."""
+IMPORTANT: All insights must be relevant to {request.region}. Do NOT include insights from other regions.
 
-        logger.info(f"  🤖 Calling OpenAI {OPENAI_TEXT_MODEL}...")
+Return ONLY the JSON object, no other text."""
+
+        logger.info(f"  🤖 Calling OpenAI {OPENAI_TEXT_MODEL} for {request.region} region...")
+        logger.info(f"     Region: {request.region}, Locale: {request.locale}, Audience: {request.audience}")
         
         # Call OpenAI with JSON mode
         response = await openai_client.chat.completions.create(
@@ -214,7 +222,8 @@ async def handle_enrich_request(msg: Msg):
         request = context_enrich_pb2.ContextEnrichRequest()
         request.ParseFromString(msg.data)
         
-        logger.info(f"✉️ Received context.enrich.request: ID={request.campaign_id}:{request.locale}")
+        logger.info(f"✉️ Received context.enrich.request: {request.campaign_id}:{request.locale}")
+        logger.info(f"   📍 Region: {request.region}, Audience: {request.audience}, Age: {request.age_min}-{request.age_max}")
         
         # Process request (this must complete successfully INCLUDING NATS publish)
         await enrich_context(request)

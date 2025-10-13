@@ -354,6 +354,15 @@ async def create_campaign(request: CampaignCreateRequest):
         await db.campaigns.insert_one(campaign_dict)
         logger.info(f"✅ Campaign {request.campaign_id} saved to MongoDB")
         
+        # Debug: Log localization audience data
+        for locale in campaign.target_locales:
+            locale_key = f"audience_{locale.value}"
+            locale_audience = getattr(campaign.localization, locale_key, None)
+            if locale_audience:
+                logger.info(f"   📍 Stored {locale_key}: {locale_audience}")
+            else:
+                logger.warning(f"   ⚠️  Missing {locale_key} in campaign.localization")
+        
         # Publish to NATS: briefs.ingested
         brief_pb = campaign_brief_pb2.CampaignBrief(
             campaign_id=campaign.campaign_id,
@@ -436,15 +445,33 @@ async def orchestrate_campaign(campaign: Campaign, correlation_id: str):
     logger.info(f"🔄 Starting orchestration for {campaign.campaign_id}")
     
     try:
-        # For each locale, trigger context enrichment
+        # For each locale, trigger context enrichment with locale-specific audience
         for locale in campaign.target_locales:
+            # Get locale-specific audience data from localization using Pydantic getattr
+            locale_key = f"audience_{locale.value}"
+            locale_audience = getattr(campaign.localization, locale_key, None)
+            
+            # Fallback to global audience if locale-specific not found
+            if locale_audience and isinstance(locale_audience, dict):
+                region = locale_audience.get('region', campaign.audience.region)
+                audience = locale_audience.get('audience', campaign.audience.audience)
+                age_min = locale_audience.get('age_min', campaign.audience.age_min or 0)
+                age_max = locale_audience.get('age_max', campaign.audience.age_max or 0)
+                logger.info(f"  📍 Using locale-specific audience for {locale.value}: region={region}, audience={audience}")
+            else:
+                region = campaign.audience.region
+                audience = campaign.audience.audience
+                age_min = campaign.audience.age_min or 0
+                age_max = campaign.audience.age_max or 0
+                logger.warning(f"  ⚠️  No locale-specific audience found for {locale.value} (key={locale_key}), using global audience: region={region}")
+            
             context_request = context_enrich_pb2.ContextEnrichRequest(
                 campaign_id=campaign.campaign_id,
                 locale=locale.value,
-                region=campaign.audience.region,
-                audience=campaign.audience.audience,
-                age_min=campaign.audience.age_min or 0,
-                age_max=campaign.audience.age_max or 0,
+                region=region,
+                audience=audience,
+                age_min=age_min,
+                age_max=age_max,
                 interests_text=campaign.audience.interests_text or "",
                 product_names=[p.name for p in campaign.products],
                 correlation_id=correlation_id,
@@ -452,7 +479,7 @@ async def orchestrate_campaign(campaign: Campaign, correlation_id: str):
             )
             
             await context_enrich_publisher.publish(context_request)
-            logger.info(f"📤 Published context.enrich.request for {campaign.campaign_id}:{locale.value} (correlation: {correlation_id})")
+            logger.info(f"📤 Published context.enrich.request for {campaign.campaign_id}:{locale.value}:{region} (correlation: {correlation_id})")
         
         logger.info(f"✅ Orchestration triggered for {campaign.campaign_id}")
         

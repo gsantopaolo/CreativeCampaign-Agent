@@ -243,7 +243,21 @@ async def compose_brand_elements(image_request: image_generate_pb2.ImageGenerate
     campaign_id = image_request.campaign_id
     locale = image_request.locale
     
-    logger.info(f"🏷️ Adding brand elements for {campaign_id}:{locale}")
+    # Extract aspect ratio from S3 URI: s3://bucket/campaigns/{campaign_id}/{locale}/{aspect_ratio}/...
+    aspect_ratio = "unknown"
+    try:
+        s3_uri = image_request.s3_uri
+        # S3 URI format: s3://bucket/campaigns/id/locale/ASPECT/file.png
+        # Split:         ['s3:', '', 'bucket', 'campaigns', 'id', 'locale', 'ASPECT', 'file.png']
+        # Index:         [  0     1     2         3          4      5         6         7      ]
+        parts = s3_uri.split('/')
+        if len(parts) >= 7:
+            aspect_ratio = parts[6]  # Extract aspect ratio at index 6
+            logger.info(f"  📐 Extracted aspect ratio '{aspect_ratio}' from S3 URI")
+    except Exception as e:
+        logger.warning(f"  ⚠️  Could not extract aspect ratio from S3 URI: {e}")
+    
+    logger.info(f"🏷️ Adding brand elements for {campaign_id}:{locale}:{aspect_ratio}")
     
     try:
         # Get the campaign to fetch brand configuration
@@ -377,6 +391,7 @@ async def compose_brand_elements(image_request: image_generate_pb2.ImageGenerate
         branded_doc = {
             "campaign_id": campaign_id,
             "locale": locale,
+            "aspect_ratio": aspect_ratio,
             "original_image_url": image_url,
             "original_s3_uri": image_request.s3_uri,
             "branded_image_url": branded_image_url,
@@ -392,9 +407,10 @@ async def compose_brand_elements(image_request: image_generate_pb2.ImageGenerate
         }
         
         await db.branded_images.insert_one(branded_doc)
-        logger.info(f"  💾 Saved branded image metadata to MongoDB: {campaign_id}:{locale}")
+        logger.info(f"  💾 Saved branded image metadata to MongoDB: {campaign_id}:{locale}:{aspect_ratio}")
         
         return {
+            "aspect_ratio": aspect_ratio,
             "branded_image_url": branded_image_url,
             "branded_s3_uri": branded_s3_uri,
             "original_image_url": image_url,
@@ -433,7 +449,8 @@ async def handle_image_generated(msg: Msg):
             )
             
             await publisher.publish(brand_composed)
-            logger.info(f"📤 Published brand.composed for {image_request.campaign_id}:{image_request.locale}")
+            aspect_ratio = result.get("aspect_ratio", "unknown")
+            logger.info(f"📤 Published brand.composed for {image_request.campaign_id}:{image_request.locale}:{aspect_ratio}")
         
         # Acknowledge the message
         await msg.ack()

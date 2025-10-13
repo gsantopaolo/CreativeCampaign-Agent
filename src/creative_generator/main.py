@@ -96,10 +96,23 @@ async def generate_creative(context_ready, context_pack):
         # Prepare the prompt for creative generation
         brand_section = f"\nBrand Guidelines: {brand_guidelines}" if brand_guidelines else ""
         
-        prompt = f"""Based on the following context, generate creative content:
+        # Map locale codes to language names (only 4 supported locales)
+        SUPPORTED_LOCALES = {
+            "en": "English",
+            "de": "German",
+            "fr": "French",
+            "it": "Italian"
+        }
+        
+        target_language = SUPPORTED_LOCALES.get(locale)
+        if not target_language:
+            raise ValueError(f"Unsupported locale: {locale}. Supported: {list(SUPPORTED_LOCALES.keys())}")
+        
+        prompt = f"""Based on the following context, generate creative content IN {target_language.upper()}:
         
         Campaign ID: {campaign_id}
-        Locale: {locale}
+        Target Locale: {locale}
+        Target Language: {target_language}
         
         Cultural Notes: {context_pack.culture_notes}
         Tone: {context_pack.tone}
@@ -108,22 +121,31 @@ async def generate_creative(context_ready, context_pack):
         Banned Words: {', '.join(context_pack.banned_words)}
         Legal Guidelines: {context_pack.legal_guidelines}{brand_section}
         
+        CRITICAL: Generate ALL content (headline, description, call_to_action) in {target_language.upper()}.
+        The JSON keys should remain in English, but ALL VALUES must be in {target_language}.
+        
         Respond with a JSON object in this EXACT format:
         {{
-          "headline": "catchy headline here (5-15 words)",
-          "description": "compelling description here (50-100 words)",
-          "call_to_action": "clear CTA here (3-8 words)",
-          "visual_elements": ["element 1", "element 2", "element 3"]
+          "headline": "catchy headline in {target_language} (5-15 words)",
+          "description": "compelling description in {target_language} (50-100 words)",
+          "call_to_action": "clear CTA in {target_language} (3-8 words)",
+          "visual_elements": ["element 1 in {target_language}", "element 2 in {target_language}", "element 3 in {target_language}"]
         }}
         
-        Ensure ALL content respects the guidelines and cultural notes. Return ONLY the JSON object."""
+        Ensure ALL content:
+        1. Is written ENTIRELY in {target_language}
+        2. Respects the cultural notes and local customs
+        3. Follows the specified tone and guidelines
+        4. Avoids banned words and respects legal guidelines
+        
+        Return ONLY the JSON object with all values in {target_language}."""
         
         # Call OpenAI with structured output
-        logger.info(f"  🤖 Calling OpenAI {OPENAI_TEXT_MODEL}...")
+        logger.info(f"  🤖 Calling OpenAI {OPENAI_TEXT_MODEL} to generate content in {target_language}...")
         response = await openai_client.chat.completions.create(
             model=OPENAI_TEXT_MODEL,
             messages=[
-                {"role": "system", "content": "You are a creative director for digital marketing campaigns. Always respond with valid JSON."},
+                {"role": "system", "content": f"You are a creative director for digital marketing campaigns. You write creative content in {target_language}. Always respond with valid JSON where all content values are in {target_language}."},
                 {"role": "user", "content": prompt}
             ],
             response_format={"type": "json_object"},
@@ -148,7 +170,9 @@ async def generate_creative(context_ready, context_pack):
 ### 4. Suggested Visual Elements
 {chr(10).join(f'- {elem}' for elem in parsed_content.visual_elements)}
 """
-        logger.info(f"  ✅ Generated creative content: {parsed_content.headline}")
+        logger.info(f"  ✅ Generated creative content in {target_language}:")
+        logger.info(f"     Headline: {parsed_content.headline}")
+        logger.info(f"     CTA: {parsed_content.call_to_action}")
         
         # Save to MongoDB
         creative_doc = {

@@ -212,8 +212,24 @@ async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposeDon
     campaign_id = image_request.campaign_id
     locale = image_request.locale
     
-    logger.info(f"✉️ Received brand.composed: {campaign_id}:{locale}")
-    logger.info(f"📝 Adding text overlay for {campaign_id}:{locale}")
+    # Extract aspect ratio from S3 URI: s3://bucket/campaigns/{campaign_id}/{locale}/{aspect_ratio}/...
+    aspect_ratio = "unknown"
+    try:
+        s3_uri = image_request.s3_uri_branded
+        # S3 URI format: s3://bucket/campaigns/id/locale/ASPECT/file.png
+        # After removing 's3://' and first part: campaigns/id/locale/ASPECT/file.png
+        # Split:                                 ['campaigns', 'id', 'locale', 'ASPECT', 'file.png']
+        # Index:                                 [    0         1       2         3         4      ]
+        path = s3_uri.replace('s3://', '').split('/', 1)[1] if 's3://' in s3_uri else s3_uri
+        parts = path.split('/')
+        if len(parts) >= 4:
+            aspect_ratio = parts[3]  # Extract aspect ratio at index 3
+            logger.info(f"  📐 Extracted aspect ratio '{aspect_ratio}' from S3 URI")
+    except Exception as e:
+        logger.warning(f"  ⚠️  Could not extract aspect ratio from S3 URI: {e}")
+    
+    logger.info(f"✉️ Received brand.composed: {campaign_id}:{locale}:{aspect_ratio}")
+    logger.info(f"📝 Adding text overlay for {campaign_id}:{locale}:{aspect_ratio}")
     
     # Get campaign data from MongoDB
     campaign = await db.campaigns.find_one({"_id": campaign_id})
@@ -222,7 +238,18 @@ async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposeDon
         return
     
     # Get the LLM-generated creative content for this locale
+    logger.info(f"  🔍 Querying MongoDB for creative: campaign_id={campaign_id}, locale={locale}")
     creative = await db.creatives.find_one({"campaign_id": campaign_id, "locale": locale})
+    
+    if not creative:
+        logger.error(f"  ❌ No creative found for {campaign_id}:{locale}")
+        # List what locales exist for debugging
+        all_creatives = await db.creatives.find({"campaign_id": campaign_id}).to_list(length=10)
+        available_locales = [c.get('locale') for c in all_creatives]
+        logger.error(f"  ℹ️  Available locales in DB: {available_locales}")
+        raise ValueError(f"No creative found for {campaign_id}:{locale}")
+    
+    logger.info(f"  ✅ Found creative for locale: {locale}")
     
     # Extract headline from creative content
     campaign_message = None
@@ -271,11 +298,12 @@ async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposeDon
     if not campaign_message:
         error_msg = f"Could not extract headline from creative content for {campaign_id}:{locale}"
         logger.error(f"  ❌ {error_msg}")
+        logger.error(f"  📄 Creative content preview: {content[:200]}...")
         raise ValueError(error_msg)
     
     brand_color = campaign.get('brand', {}).get('primary_color', '#FF3355')
     
-    logger.info(f"  📝 Message: {campaign_message}")
+    logger.info(f"  📝 Extracted message for locale '{locale}': {campaign_message}")
     logger.info(f"  🎨 Brand color: {brand_color}")
     
     # Download branded image from S3
@@ -405,9 +433,9 @@ async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposeDon
     
     logger.info(f"  ✅ Final image created ({len(final_image_data)} bytes)")
     
-    # Upload to S3
+    # Upload to S3 with aspect ratio in path
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    s3_key = f"campaigns/{campaign_id}/{locale}/final_{timestamp}.png"
+    s3_key = f"campaigns/{campaign_id}/{locale}/{aspect_ratio}/final_{timestamp}.png"
     s3_uri = f"s3://{S3_BUCKET_NAME}/{s3_key}"
     
     logger.info(f"  📤 Uploading to S3: {s3_uri}")
@@ -430,38 +458,40 @@ async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposeDon
     
     logger.info(f"  🔗 Generated presigned URL (7 days): {presigned_url[:80]}...")
     
-    # Save metadata to MongoDB
+    # Save metadata to MongoDB - store per aspect ratio
     # First ensure outputs object exists
     await db.campaigns.update_one(
         {"_id": campaign_id, "outputs": None},
         {"$set": {"outputs": {}}}
     )
     
-    # Now update the locale-specific data
+    # Now update the locale and aspect-ratio-specific data
     await db.campaigns.update_one(
         {"_id": campaign_id},
         {
             "$set": {
-                f"outputs.{locale}.final_image_s3_uri": s3_uri,
-                f"outputs.{locale}.final_image_url": presigned_url,
-                f"outputs.{locale}.text_overlay_timestamp": datetime.now(timezone.utc),
-                f"outputs.{locale}.text_placement": text_placement
+                f"outputs.{locale}.{aspect_ratio}.final_image_s3_uri": s3_uri,
+                f"outputs.{locale}.{aspect_ratio}.final_image_url": presigned_url,
+                f"outputs.{locale}.{aspect_ratio}.text_overlay_timestamp": datetime.now(timezone.utc),
+                f"outputs.{locale}.{aspect_ratio}.text_placement": text_placement
             }
         }
     )
     
-    logger.info(f"  💾 Saved final image metadata to MongoDB: {campaign_id}:{locale}")
+    logger.info(f"  💾 Saved final image metadata to MongoDB: {campaign_id}:{locale}:{aspect_ratio}")
     
-    # Check if all locales are complete and update campaign status
+    # Check if all locales and aspect ratios are complete and update campaign status
     campaign = await db.campaigns.find_one({"_id": campaign_id})
     if campaign:
         target_locales = campaign.get('target_locales', [])
+        target_aspect_ratios = campaign.get('output', {}).get('aspect_ratios', [])
         outputs = campaign.get('outputs', {})
         
-        # Check if all locales have final images
+        # Check if all locales and aspect ratios have final images
         all_complete = all(
-            outputs.get(loc, {}).get('final_image_url') is not None 
+            outputs.get(loc, {}).get(ar, {}).get('final_image_url') is not None 
             for loc in target_locales
+            for ar in target_aspect_ratios
         )
         
         if all_complete:
@@ -479,6 +509,7 @@ async def overlay_text_on_image(image_request: brand_compose_pb2.BrandComposeDon
     return {
         "campaign_id": campaign_id,
         "locale": locale,
+        "aspect_ratio": aspect_ratio,
         "final_image_s3_uri": s3_uri,
         "final_image_url": presigned_url,
         "text_placement": text_placement

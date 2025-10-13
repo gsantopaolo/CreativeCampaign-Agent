@@ -692,17 +692,21 @@ def render_campaign_status(campaign_id):
     campaign_data = campaign_resp.json() if campaign_resp and campaign_resp.status_code == 200 else {}
     outputs = campaign_data.get('outputs') or {}
     
-    # Convert outputs to list format for display
+    # Convert outputs to list format for display - now includes aspect ratios
     final_images = []
-    for locale, output_data in outputs.items():
-        if output_data.get('final_image_url'):
-            final_images.append({
-                'locale': locale,
-                'final_image_url': output_data.get('final_image_url'),
-                'final_image_s3_uri': output_data.get('final_image_s3_uri'),
-                'text_overlay_timestamp': output_data.get('text_overlay_timestamp'),
-                'text_placement': output_data.get('text_placement', {})
-            })
+    for locale, locale_data in outputs.items():
+        if isinstance(locale_data, dict):
+            # New structure: outputs.{locale}.{aspect_ratio}.*
+            for aspect_ratio, output_data in locale_data.items():
+                if isinstance(output_data, dict) and output_data.get('final_image_url'):
+                    final_images.append({
+                        'locale': locale,
+                        'aspect_ratio': aspect_ratio,
+                        'final_image_url': output_data.get('final_image_url'),
+                        'final_image_s3_uri': output_data.get('final_image_s3_uri'),
+                        'text_overlay_timestamp': output_data.get('text_overlay_timestamp'),
+                        'text_placement': output_data.get('text_placement', {})
+                    })
     
     # Display pipeline stages
     st.markdown("### 🔄 Pipeline Stages")
@@ -849,7 +853,6 @@ def render_campaign_status(campaign_id):
             branded_by_locale_ratio = {}
             for item in branded_images:
                 locale = item.get('locale')
-                # Try to infer aspect ratio from the original image or use a placeholder
                 aspect_ratio = item.get('aspect_ratio', 'unknown')
                 key = f"{locale}:{aspect_ratio}"
                 if key not in branded_by_locale_ratio:
@@ -899,15 +902,21 @@ def render_campaign_status(campaign_id):
     # ✍️ Text Overlay (Final) Table
     with st.expander("✍️ Text Overlay (Final)", expanded=(len(final_images) > 0)):
         if requested_locales and requested_aspect_ratios:
-            # Group final images by locale
-            final_by_locale = {item['locale']: item for item in final_images}
+            # Group final images by locale and aspect ratio
+            final_by_locale_ratio = {}
+            for item in final_images:
+                locale = item.get('locale')
+                aspect_ratio = item.get('aspect_ratio')
+                key = f"{locale}:{aspect_ratio}"
+                final_by_locale_ratio[key] = item
             
             # Create table with aspect ratios as rows and locales as columns
             table_data = []
             for aspect_ratio in requested_aspect_ratios:
                 row = {"Aspect Ratio": aspect_ratio.upper()}
                 for locale in requested_locales:
-                    if locale in final_by_locale:
+                    key = f"{locale}:{aspect_ratio}"
+                    if key in final_by_locale_ratio:
                         row[locale.upper()] = "✅"
                     else:
                         row[locale.upper()] = "⏳"
@@ -915,28 +924,33 @@ def render_campaign_status(campaign_id):
             
             st.dataframe(table_data, use_container_width=True, hide_index=True)
             
-            # Show final images
+            # Show final images grouped by locale
             if final_images:
                 st.markdown("#### ✍️ Final Images")
-                for item in final_images:
-                    locale = item.get('locale', 'unknown')
-                    st.markdown(f"**{locale.upper()}**")
-                    col1, col2 = st.columns([1, 2])
-                    with col1:
-                        text_placement = item.get('text_placement', {})
-                        st.write(f"**Font Size:** {text_placement.get('font_size', 'N/A')}pt")
-                        st.write(f"**Text Color:** {text_placement.get('text_color', 'N/A')}")
-                        st.write(f"**Alignment:** {text_placement.get('alignment', 'N/A')}")
-                        st.write(f"**Completed:** {item.get('text_overlay_timestamp', 'N/A')[:19] if item.get('text_overlay_timestamp') else 'N/A'}")
-                        if text_placement.get('reasoning'):
-                            st.markdown("**🤖 AI Reasoning:**")
-                            st.caption(text_placement.get('reasoning')[:150] + "...")
-                    with col2:
-                        final_image_url = item.get('final_image_url')
-                        if final_image_url:
-                            st.image(final_image_url, use_column_width=True)
-                            st.caption("✅ Complete: Logo + Brand Colors + Campaign Message")
-                    st.markdown("---")
+                for locale in requested_locales:
+                    locale_finals = [img for img in final_images if img.get('locale') == locale]
+                    if locale_finals:
+                        st.markdown(f"### {locale.upper()} ({len(locale_finals)} aspect ratios)")
+                        for item in locale_finals:
+                            aspect_ratio = item.get('aspect_ratio', 'unknown')
+                            st.markdown(f"**{aspect_ratio.upper()}**")
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                text_placement = item.get('text_placement', {})
+                                st.write(f"**Font Size:** {text_placement.get('font_size', 'N/A')}pt")
+                                st.write(f"**Text Color:** {text_placement.get('text_color', 'N/A')}")
+                                st.write(f"**Alignment:** {text_placement.get('alignment', 'N/A')}")
+                                st.write(f"**Completed:** {item.get('text_overlay_timestamp', 'N/A')[:19] if item.get('text_overlay_timestamp') else 'N/A'}")
+                                if text_placement.get('reasoning'):
+                                    st.markdown("**🤖 AI Reasoning:**")
+                                    st.caption(text_placement.get('reasoning')[:150] + "...")
+                            with col2:
+                                final_image_url = item.get('final_image_url')
+                                if final_image_url:
+                                    st.image(final_image_url, use_column_width=True)
+                                    st.caption("✅ Complete: Logo + Brand Colors + Campaign Message")
+                            st.markdown("---")
+                        st.markdown("---")
         else:
             st.info("⏳ No final images yet")
     

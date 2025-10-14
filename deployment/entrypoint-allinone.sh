@@ -30,7 +30,7 @@ if [ ! -f /data/mongodb/.initialized ]; then
     
     # Stop MongoDB gracefully (supervisord will restart it)
     echo "  🛑 Stopping temporary MongoDB..."
-    pkill mongod
+    /usr/local/bin/mongod --dbpath=/data/mongodb --shutdown || killall mongod 2>/dev/null || true
     sleep 3
     
     # Mark as initialized
@@ -112,6 +112,14 @@ if [ -z "$OPENAI_API_KEY" ]; then
     echo "⚠️  WARNING: OPENAI_API_KEY not set!"
     echo "   Set it with: -e OPENAI_API_KEY=sk-your-key"
     echo ""
+fi
+
+# ============================================================================
+# Update supervisord config with actual OPENAI_API_KEY value
+# ============================================================================
+if [ -n "$OPENAI_API_KEY" ]; then
+    # Replace placeholder with actual API key in supervisord config
+    sed -i "s|OPENAI_API_KEY=\"%(ENV_OPENAI_API_KEY)s\"|OPENAI_API_KEY=\"${OPENAI_API_KEY}\"|g" /etc/supervisor/conf.d/supervisord.conf
 fi
 
 # ============================================================================

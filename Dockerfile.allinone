@@ -88,6 +88,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ /app/src/
 COPY proto/ /app/proto/
 
+# Copy default logo to web directory
+RUN cp /app/src/api/logo.png /app/src/web/logo.png
+
 # Create data directories
 RUN mkdir -p \
     /data/mongodb \
@@ -102,11 +105,12 @@ COPY deployment/entrypoint-allinone.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Expose ports
-# Application: API Gateway, Streamlit Web UI
+# Application: Streamlit Web UI, API Backend
 EXPOSE 8000
 EXPOSE 8501
-# Management UIs: MongoDB Express, MinIO API/Console, Supervisord
+# Management UIs: MongoDB Express, NATS Monitor, MinIO API/Console, Supervisord
 EXPOSE 8081
+EXPOSE 8222
 EXPOSE 9000
 EXPOSE 9001
 EXPOSE 9002

@@ -3,7 +3,7 @@
 **One container. Zero external dependencies. Full production features.**
 
 This is a complete, standalone Docker container that includes:
-- ✅ All 7 application services (API, Web UI, 5 workers)
+- ✅ All 7 application services (Web UI, Backend API, 5 workers)
 - ✅ MongoDB database
 - ✅ NATS JetStream messaging
 - ✅ MinIO S3-compatible storage
@@ -37,10 +37,9 @@ Once started, open your browser to:
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| **🎨 Main Application** | http://localhost:8501 | - |
-| **🔌 API Gateway** | http://localhost:8000 | - |
-| **📚 API Docs (Swagger)** | http://localhost:8000/docs | - |
+| **🎨 Web Application** | http://localhost:8501 | - |
 | **🗄️ MongoDB UI** | http://localhost:8081 | admin / admin |
+| **📨 NATS Monitor** | http://localhost:8222 | - |
 | **📦 MinIO Console** | http://localhost:9001 | minioadmin / minioadmin |
 | **🎛️ Process Manager** | http://localhost:9002 | admin / admin |
 
@@ -113,11 +112,13 @@ docker run -d \
   -p 8000:8000 \
   -p 8501:8501 \
   -p 8081:8081 \
+  -p 8222:8222 \
+  -p 9000:9000 \
   -p 9001:9001 \
   -p 9002:9002 \
   -v creative-campaign-data:/data \
   -e OPENAI_API_KEY="sk-xxx" \
-  genmind/creative-campaign:v0.0.1-beta
+  gsantopaolo/creative-campaign:latest
 ```
 
 **Run for quick testing (no data persistence):**
@@ -168,23 +169,22 @@ The container runs **13 processes** managed by Supervisord:
 
 ### Infrastructure (3)
 1. **MongoDB** - Database (port 27017, internal)
-2. **NATS** - Message queue (port 4222, internal)
+2. **NATS JetStream** - Message queue (port 4222, internal; monitoring port 8222)
 3. **MinIO** - S3 storage (ports 9000, 9001)
 
-### Management UIs (1)
+### Management UIs (3)
 4. **MongoDB Express** - Database UI (port 8081)
+5. **NATS Monitor** - Messaging stats (port 8222)
+6. **Supervisord Web UI** - Process manager (port 9002)
 
 ### Application Services (7)
-5. **API Gateway** - FastAPI (port 8000)
-6. **Web UI** - Streamlit (port 8501)
-7. **Context Enricher** - Worker
-8. **Creative Generator** - Worker
-9. **Image Generator** - Worker (DALL-E)
-10. **Brand Composer** - Worker
-11. **Text Overlay** - Worker
-
-### Process Manager (1)
-12. **Supervisord Web UI** - Monitor all processes (port 9002)
+7. **API Backend** - FastAPI (port 8000, internal)
+8. **Web UI** - Streamlit (port 8501)
+9. **Context Enricher** - Worker
+10. **Creative Generator** - Worker
+11. **Image Generator** - Worker (DALL-E)
+12. **Brand Composer** - Worker
+13. **Text Overlay** - Worker
 
 ---
 
@@ -332,6 +332,8 @@ docker run -d \
   -p 8000:8000 \
   -p 8501:8501 \
   -p 8081:8081 \
+  -p 8222:8222 \
+  -p 9000:9000 \
   -p 9001:9001 \
   -p 9002:9002 \
   -v creative-data:/data \
@@ -406,7 +408,6 @@ https://hub.docker.com/r/genmind/creative-campaign
 
 - [Main README](../README.md) - Project overview
 - [Architecture Docs](../docs/architecture.md) - System design
-- [API Documentation](http://localhost:8000/docs) - Interactive API docs
 - [Multi-Container Setup](docker-compose.yml) - Scalable deployment
 
 ---

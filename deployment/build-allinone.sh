@@ -6,7 +6,7 @@
 set -e
 
 # Version configuration
-VERSION="${VERSION:-v0.0.3-beta}"
+VERSION="${VERSION:-v0.0.18-beta}"
 IMAGE_NAME="gsantopaolo/creative-campaign"
 
 echo "🏗️  Building CreativeCampaign-Agent All-in-One Container..."
@@ -50,10 +50,10 @@ echo ""
 # docker push gsantopaolo/creative-campaign --all-tags
 
 # Stop all containers (if any exist)
-#[ "$(docker ps -q)" ] && docker stop $(docker ps -q)
+# [ "$(docker ps -q)" ] && docker stop $(docker ps -q)
 
 # Remove all containers (if any exist)
-#[ "$(docker ps -aq)" ] && docker rm $(docker ps -aq)
+# [ "$(docker ps -aq)" ] && docker rm $(docker ps -aq)
 
 # Remove all images (if any exist)
 #[ "$(docker images -q)" ] && docker rmi $(docker images -q) -f
@@ -62,4 +62,4 @@ echo ""
 #[ "$(docker volume ls -q)" ] && docker volume rm $(docker volume ls -q)
 
 # Remove all unused resources
-#docker system prune -a --volumes -f
+# docker system prune -a --volumes -f

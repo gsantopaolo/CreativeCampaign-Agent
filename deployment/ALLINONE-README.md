@@ -2,29 +2,35 @@
 
 **One container. Zero external dependencies. Full production features.**
 
-This is a complete, standalone Docker container that includes:
-- ✅ All 7 application services (Web UI, Backend API, 5 workers)
-- ✅ MongoDB database
-- ✅ NATS JetStream messaging
-- ✅ MinIO S3-compatible storage
-- ✅ Management UIs for all components
+This is a complete, standalone Docker container that includes everithing you need to create your own social media campaigns.
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Build the image
+### For End Users (Just Run It)
+
+**Don't want to build? Just want to run?** → See **[QUICKSTART.md](../QUICKSTART.md)**
+
+```bash
+curl -O https://raw.githubusercontent.com/gsantopaolo/CreativeCampaign-Agent/main/deployment/run-creative-campaign.sh
+chmod +x run-creative-campaign.sh
+./run-creative-campaign.sh sk-proj-YOUR-OPENAI-KEY
+```
+
+### For Developers (Build & Run)
+
+#### 1. Build the image
 ```bash
 cd deployment
 ./build-allinone.sh
 ```
 
-This builds: `genmind/creative-campaign:v0.0.1-beta` and `genmind/creative-campaign:latest`
+This builds: `gsantopaolo/creative-campaign:v0.0.18-beta` and `gsantopaolo/creative-campaign:latest`
 
-### 2. Run the container
+#### 2. Run the container
 ```bash
-export OPENAI_API_KEY="sk-your-key-here"
-docker compose -f docker-compose-allinone.yml up -d
+./run-creative-campaign.sh sk-proj-YOUR-OPENAI-KEY
 ```
 
 **That's it!** 🎉
@@ -324,7 +330,7 @@ docker push genmind/creative-campaign --all-tags
 
 # Run with all ports exposed
 ```bash
-./run-allinone.sh sk-your-api-key-here
+./run-creative-campaign.sh sk-your-api-key-here
 ```
 ```bash
 docker run -d \

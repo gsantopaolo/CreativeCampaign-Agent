@@ -4,10 +4,10 @@
 # CreativeCampaign-Agent - All-in-One Container Runner
 # ============================================================================
 # Usage:
-# ./run-allinone.sh sk-proj-abc123...
+# ./run-creative-campaign.sh sk-proj-abc123...
 # or:
 # export OPENAI_API_KEY="sk-your-key-here"
-# ./run-allinone.sh
+# ./run-creative-campaign.sh
 # ============================================================================
 
 # Parse command line arguments
@@ -21,8 +21,8 @@ echo ""
 # Check if OPENAI_API_KEY is set
 if [ -z "$OPENAI_API_KEY" ]; then
     echo "⚠️  Warning: OPENAI_API_KEY not provided"
-    echo "   Usage: ./run-allinone.sh [OPENAI_API_KEY]"
-    echo "   Or:    export OPENAI_API_KEY=sk-xxx && ./run-allinone.sh"
+    echo "   Usage: ./run-creative-campaign.sh [OPENAI_API_KEY]"
+    echo "   Or:    export OPENAI_API_KEY=sk-xxx && ./run-creative-campaign.sh"
     echo ""
     echo "   The container will use the default key (not recommended for production)"
     echo ""
@@ -180,5 +180,5 @@ echo "   Remove:       docker rm -f creative-campaign"
 echo "   Restart:      docker restart creative-campaign"
 echo ""
 echo "💡 Tip: To restart with a different API key:"
-echo "   ./run-allinone.sh sk-your-new-key-here"
+echo "   ./run-creative-campaign.sh sk-your-new-key-here"
 echo ""

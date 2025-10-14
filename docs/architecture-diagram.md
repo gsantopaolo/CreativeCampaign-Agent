@@ -79,66 +79,7 @@ graph TB
     style MONGO fill:#fff9c4
 ```
 
-## Data Flow: Campaign Creation to Final Assets
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant UI as Streamlit UI
-    participant API as API Gateway
-    participant NATS as NATS JetStream
-    participant CE as Context Enricher
-    participant CG as Creative Generator
-    participant IG as Image Generator
-    participant BC as Brand Composer
-    participant TO as Text Overlay
-    participant OpenAI as OpenAI API
-    participant S3 as MinIO/S3
-    participant DB as MongoDB
-
-    User->>UI: Create Campaign
-    UI->>API: POST /campaigns
-    API->>DB: Save Campaign
-    API->>NATS: Publish briefs.ingested
-    API-->>UI: 202 Accepted
-    
-    NATS->>CE: context.enrich.request
-    CE->>OpenAI: Generate Context (GPT-4o-mini)
-    CE->>DB: Store Context Pack
-    CE->>NATS: Publish context.enrich.ready
-    
-    NATS->>CG: creative.generate.request
-    CG->>OpenAI: Generate Content (GPT-4o-mini)
-    CG->>DB: Store Creative
-    CG->>NATS: Publish creative.generate.done
-    
-    NATS->>IG: creative.generate.done
-    IG->>OpenAI: Generate Images (DALL-E 3 × 4 aspect ratios)
-    OpenAI-->>IG: Image Data
-    IG->>S3: Upload Images
-    IG->>DB: Store Image Metadata
-    IG->>NATS: Publish image.generated
-    
-    NATS->>BC: image.generated
-    BC->>S3: Download Image
-    BC->>OpenAI: Analyze for Logo Placement (GPT-4o-mini Vision)
-    OpenAI-->>BC: Optimal Position + Reasoning
-    BC->>BC: Apply Logo + Brand Colors
-    BC->>S3: Upload Branded Image
-    BC->>DB: Update with Placement Info
-    BC->>NATS: Publish brand.composed
-    
-    NATS->>TO: brand.composed
-    TO->>S3: Download Branded Image
-    TO->>TO: Overlay Text (4 aspect ratios)
-    TO->>S3: Upload Final Assets (1x1, 4x5, 9x16, 16x9)
-    TO->>DB: Update Campaign Status
-    TO->>NATS: Publish text.overlay.done
-    
-    NATS->>API: creative.ready_for_review
-    API->>UI: Real-time Update
-    UI-->>User: Campaign Ready!
-```
 
 ## Stakeholder Views
 

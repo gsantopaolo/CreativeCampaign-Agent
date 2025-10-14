@@ -25,11 +25,11 @@ Each service scales independently and communicates via NATS pub/sub for high thr
 
 ### Worker Services (NATS Event-Driven)
 
-3. **context-enricher** - Builds locale-specific context packs
-4. **creative-generator** - Generates creative content using GPT-4o-mini
-5. **image-generator** - Generates images using DALL-E 3
-6. **brand-composer** - Adds logo using AI-powered placement (GPT-4o-mini vision)
-7. **text-overlay** - Adds text and exports multiple aspect ratios
+3. [**context-enricher**](service-context-enricher.md) - Builds locale-specific context packs
+4. [**creative-generator**](service-creative-generator.md) - Generates creative content using GPT-4o-mini
+5. [**image-generator**](service-image-generator.md) - Generates images using DALL-E 3
+6. [**brand-composer**](service-brand-composer.md) - Adds logo using AI-powered placement (GPT-4o-mini vision)
+7. [**text-overlay**](service-text-overlay.md) - Adds text and exports multiple aspect ratios
 
 ---
 

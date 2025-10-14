@@ -321,6 +321,23 @@ docker push genmind/creative-campaign --all-tags
 ```
 
 ### Users can then run:
+
+# Run with all ports exposed
+```bash
+./run-allinone.sh sk-your-api-key-here
+```
+```bash
+docker run -d \
+  --name creative-campaign \
+  -p 8000:8000 \
+  -p 8501:8501 \
+  -p 8081:8081 \
+  -p 9001:9001 \
+  -p 9002:9002 \
+  -v creative-data:/data \
+  -e OPENAI_API_KEY=YOUR-OPENAI_API_KEY
+```
+
 ```bash
 # Pull from Docker Hub
 docker pull genmind/creative-campaign:v0.0.1-beta

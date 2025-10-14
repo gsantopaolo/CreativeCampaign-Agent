@@ -21,30 +21,23 @@ echo ""
 if [ ! -f /data/mongodb/.initialized ]; then
     echo "🗄️  Initializing MongoDB for first time..."
     
-    # Start MongoDB temporarily
+    # Start MongoDB temporarily to create initial data structures
     /usr/local/bin/mongod --dbpath=/data/mongodb --bind_ip_all --quiet --logpath=/dev/null --fork
     
-    # Wait for MongoDB to be ready
-    echo "  ⏳ Waiting for MongoDB to start..."
-    for i in {1..30}; do
-        if /usr/local/bin/mongosh --eval "db.version()" --quiet > /dev/null 2>&1; then
-            echo "  ✅ MongoDB ready"
-            break
-        fi
-        sleep 1
-    done
+    # Wait for MongoDB to initialize (simple wait, MongoDB will be managed by supervisord)
+    echo "  ⏳ Waiting for MongoDB to initialize..."
+    sleep 5
     
-    # Create initial database
-    /usr/local/bin/mongosh --eval "use creative_campaign" --quiet > /dev/null 2>&1
-    
-    # Shutdown MongoDB
-    /usr/local/bin/mongosh admin --eval "db.shutdownServer()" --quiet > /dev/null 2>&1
+    # Stop MongoDB gracefully (supervisord will restart it)
+    echo "  🛑 Stopping temporary MongoDB..."
+    pkill mongod
+    sleep 3
     
     # Mark as initialized
     touch /data/mongodb/.initialized
     echo "  ✅ MongoDB initialized"
 else
-    echo "✅ MongoDB already initialized"
+    echo "✅ MongoDB already initialized (skipping setup)"
 fi
 echo ""
 

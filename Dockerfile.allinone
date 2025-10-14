@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     ca-certificates \
     gnupg \
+    netcat-openbsd \
+    procps \
     # MongoDB dependencies
     libcurl4 \
     libgssapi-krb5-2 \

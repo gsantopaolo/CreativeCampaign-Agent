@@ -1,0 +1,95 @@
+# ============================================================================
+# CreativeCampaign-Agent - Unified Requirements
+# Single environment for all services under src/
+# ============================================================================
+# Last Updated: 2025-10-14
+# Python: 3.11+
+# ============================================================================
+
+# ————— Web Frameworks —————
+fastapi==0.116.0          # API Gateway (src/api)
+uvicorn==0.35.0           # ASGI server for FastAPI
+streamlit==1.50.0         # Web UI (src/web)
+
+# ————— Database & Storage —————
+motor==3.6.0              # Async MongoDB driver (all services except web)
+pymongo==4.9.0            # MongoDB driver (used with motor) - ⚠️ motor 3.6.0 requires >=4.9,<4.10
+boto3==1.34.34            # AWS S3/MinIO client (api, brand_composer, image_generator, text_overlay)
+
+# ————— Messaging —————
+nats-py==2.10.0           # NATS messaging (all services except web)
+protobuf==6.31.1          # Protocol buffers - must match generated files version
+
+# ————— AI & Machine Learning —————
+openai>=1.54.0            # OpenAI API (all services except web) - Required for structured outputs
+
+# ————— Image Processing —————
+pillow==10.2.0            # PIL/Pillow for image manipulation (api, brand_composer, text_overlay, web)
+
+# ————— HTTP & Networking —————
+httpx==0.24.1             # Async HTTP client - reverted from 0.25.2 (breaking changes with Azure blob storage)
+requests==2.32.4          # HTTP client (api, web)
+
+# ————— Data & Utilities —————
+python-dotenv==1.1.1      # Environment variables (all services)
+python-multipart==0.0.9   # File uploads (api)
+pandas==2.2.0             # Data manipulation (web)
+
+# ————— Development & Testing —————
+pytest==7.4.0             # Testing framework (brand_composer, creative_generator, image_generator)
+pytest-asyncio==0.21.1    # Async test support (brand_composer, creative_generator, image_generator)
+
+# ============================================================================
+# Service-Specific Dependency Map
+# ============================================================================
+#
+# src/api/                  fastapi, uvicorn, requests, python-dotenv, protobuf, 
+#                           nats-py, motor, pymongo, openai, pillow, boto3, python-multipart
+#
+# src/brand_composer/       motor, python-dotenv, nats-py, protobuf, pymongo, httpx, 
+#                           pillow, boto3, openai, pytest, pytest-asyncio
+#
+# src/context_enricher/     motor, nats-py, python-dotenv, protobuf, openai, httpx
+#
+# src/creative_generator/   motor, python-dotenv, nats-py, protobuf, openai, pymongo, 
+#                           httpx, pytest, pytest-asyncio
+#
+# src/image_generator/      motor, python-dotenv, nats-py, protobuf, openai, pymongo, 
+#                           httpx, boto3, pytest, pytest-asyncio
+#
+# src/text_overlay/         nats-py, protobuf, python-dotenv, openai, pillow, 
+#                           boto3, motor, pymongo, httpx
+#
+# src/web/                  streamlit, requests, python-dotenv, pillow, pandas
+#
+# ============================================================================
+# Version Upgrade Notes (from original service requirements)
+# ============================================================================
+#
+# ✅ UNIFIED VERSIONS:
+# -------------------
+# motor:           3.3.2 → 3.6.0    (all services aligned to context_enricher version)
+# pymongo:         4.5.0 → 4.9.0    (CRITICAL FIX: motor 3.6.0 requires >=4.9)
+# nats-py:         2.6.0 → 2.10.0   (all services aligned to api/text_overlay version)
+# openai:          various → >=1.54.0 (minimum raised for structured outputs in creative_generator)
+# httpx:           <0.25.0 → 0.25.2 (CRITICAL: all services aligned to context_enricher version)
+# pillow:          10.1.0 → 10.2.0  (all services aligned to api/web version)
+# python-dotenv:   1.0.0 → 1.1.1    (all services aligned to api/text_overlay/web version)
+#
+# ⚠️ TESTING PRIORITY:
+# --------------------
+# 1. httpx 0.25.2 - Minor version bump, test all HTTP operations
+# 2. nats-py 2.10.0 - Test message pub/sub and JetStream
+# 3. openai >=1.54.0 - Test all LLM calls (text, vision, image generation)
+# 4. motor 3.6.0 + pymongo 4.6.1 - Test all MongoDB operations
+# 5. pillow 10.2.0 - Test image processing and text rendering
+#
+# 📋 COMPATIBILITY:
+# -----------------
+# All version upgrades are minor/patch level changes. No major version bumps.
+# Backward compatibility is expected, but thorough testing is recommended.
+#
+# See DEPENDENCY_MIGRATION.md for detailed migration guide and testing checklist.
+# See DEPENDENCY_CONFLICTS.md for version conflict analysis and risk assessment.
+#
+# ============================================================================

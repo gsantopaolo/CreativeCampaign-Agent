@@ -25,8 +25,10 @@ echo ""
 
 # Check for --build flag
 if [ "$1" = "--build" ]; then
-    echo "🔨 Building and starting all services..."
-    docker-compose up -d --build
+    echo "🔨 Building all services without cache..."
+    docker-compose build --no-cache
+    echo "🚀 Starting all services..."
+    docker-compose up -d
 else
     echo "📦 Starting all services..."
     docker-compose up -d

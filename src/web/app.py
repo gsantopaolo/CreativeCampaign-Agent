@@ -840,7 +840,7 @@ def render_campaign_status(campaign_id):
                             with col2:
                                 image_url = item.get('image_url')
                                 if image_url:
-                                    st.image(image_url, use_column_width=True)
+                                    st.image(image_url, use_container_width=True)
                             st.markdown("---")
                         st.markdown("---")
         else:
@@ -893,7 +893,7 @@ def render_campaign_status(campaign_id):
                             with col2:
                                 branded_image_url = item.get('branded_image_url')
                                 if branded_image_url:
-                                    st.image(branded_image_url, use_column_width=True)
+                                    st.image(branded_image_url, use_container_width=True)
                             st.markdown("---")
                         st.markdown("---")
         else:
@@ -947,7 +947,7 @@ def render_campaign_status(campaign_id):
                             with col2:
                                 final_image_url = item.get('final_image_url')
                                 if final_image_url:
-                                    st.image(final_image_url, use_column_width=True)
+                                    st.image(final_image_url, use_container_width=True)
                                     st.caption("✅ Complete: Logo + Brand Colors + Campaign Message")
                             st.markdown("---")
                         st.markdown("---")

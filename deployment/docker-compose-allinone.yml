@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  creative-campaign-allinone:
+    build:
+      context: ..
+      dockerfile: Dockerfile.allinone
+    image: genmind/creative-campaign:v0.0.1-beta
+    container_name: creative-campaign-allinone
+    restart: unless-stopped
+    ports:
+      # Application
+      - "8000:8000"    # API Gateway + Swagger
+      - "8501:8501"    # Streamlit Web UI
+      # Management UIs
+      - "8081:8081"    # MongoDB Express
+      - "9000:9000"    # MinIO API
+      - "9001:9001"    # MinIO Console
+      - "9002:9002"    # Supervisord Web UI
+    volumes:
+      - creative-allinone-data:/data
+    environment:
+      # Required: OpenAI API Key
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Optional: OpenAI models
+      - OPENAI_TEXT_MODEL=${OPENAI_TEXT_MODEL:-gpt-4o-mini}
+      - OPENAI_IMAGE_MODEL=${OPENAI_IMAGE_MODEL:-dall-e-3}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  creative-allinone-data:
+    driver: local

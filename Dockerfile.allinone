@@ -1,0 +1,120 @@
+# ============================================================================
+# CreativeCampaign-Agent - All-in-One Container
+# Single container with all services + infrastructure
+# ============================================================================
+FROM python:3.11-slim
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    DATA_DIR=/data \
+    PYTHONUNBUFFERED=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build tools
+    build-essential \
+    curl \
+    wget \
+    ca-certificates \
+    gnupg \
+    # MongoDB dependencies
+    libcurl4 \
+    libgssapi-krb5-2 \
+    libldap-common \
+    libsasl2-2 \
+    libsasl2-modules \
+    libsasl2-modules-gssapi-mit \
+    openssl \
+    # Fonts for text overlay
+    fonts-dejavu-core \
+    fontconfig \
+    # Process management
+    supervisor \
+    # Node.js for MongoDB Express
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Install MongoDB Community Edition manually
+# ============================================================================
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then \
+        curl -fSL -o mongodb.tgz https://fastdl.mongodb.org/linux/mongodb-linux-aarch64-ubuntu2204-7.0.5.tgz && \
+        tar -xzf mongodb.tgz && \
+        cp mongodb-linux-*-7.0.5/bin/* /usr/local/bin/ && \
+        rm -rf mongodb*; \
+    else \
+        curl -fSL -o mongodb.tgz https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2204-7.0.5.tgz && \
+        tar -xzf mongodb.tgz && \
+        cp mongodb-linux-*-7.0.5/bin/* /usr/local/bin/ && \
+        rm -rf mongodb*; \
+    fi
+
+# ============================================================================
+# Install NATS Server 2.10
+# ============================================================================
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget https://github.com/nats-io/nats-server/releases/download/v2.10.7/nats-server-v2.10.7-linux-${ARCH}.tar.gz && \
+    tar -xzf nats-server-v2.10.7-linux-${ARCH}.tar.gz && \
+    mv nats-server-v2.10.7-linux-${ARCH}/nats-server /usr/local/bin/ && \
+    rm -rf nats-server-v2.10.7-linux-${ARCH}* && \
+    chmod +x /usr/local/bin/nats-server
+
+# ============================================================================
+# Install MinIO
+# ============================================================================
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget https://dl.min.io/server/minio/release/linux-${ARCH}/minio -O /usr/local/bin/minio && \
+    chmod +x /usr/local/bin/minio
+
+# ============================================================================
+# Install MongoDB Express (Web UI for MongoDB)
+# ============================================================================
+RUN npm install -g mongo-express@1.0.0-alpha.4
+
+# ============================================================================
+# Create application directory
+# ============================================================================
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY src/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application source code
+COPY src/ /app/src/
+COPY proto/ /app/proto/
+
+# Create data directories
+RUN mkdir -p \
+    /data/mongodb \
+    /data/nats \
+    /data/minio \
+    /var/log/supervisor \
+    /etc/supervisor/conf.d
+
+# Copy configuration files
+COPY deployment/supervisord-allinone.conf /etc/supervisor/conf.d/supervisord.conf
+COPY deployment/entrypoint-allinone.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose ports
+# Application: API Gateway, Streamlit Web UI
+EXPOSE 8000
+EXPOSE 8501
+# Management UIs: MongoDB Express, MinIO API/Console, Supervisord
+EXPOSE 8081
+EXPOSE 9000
+EXPOSE 9001
+EXPOSE 9002
+
+# Volume for persistent data
+VOLUME ["/data"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/healthz || exit 1
+
+# Set entrypoint
+ENTRYPOINT ["/entrypoint.sh"]

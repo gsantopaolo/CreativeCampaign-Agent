@@ -301,9 +301,13 @@ async def main():
     logger.info("🛠️ Image Generator service starting...")
     
     # Initialize readiness probe
+    enable_probe = os.getenv("IMAGE_GENERATOR_ENABLE_READINESS_PROBE", "true").lower()
     readiness_probe = ReadinessProbe(readiness_time_out=READINESS_TIME_OUT)
-    threading.Thread(target=readiness_probe.start_server, daemon=True).start()
-    logger.info("✅ Readiness probe server started.")
+    if enable_probe in ("true", "yes", "1"):
+        threading.Thread(target=readiness_probe.start_server, daemon=True).start()
+        logger.info("✅ Readiness probe server started.")
+    else:
+        logger.info("ℹ️ Readiness probe disabled via IMAGE_GENERATOR_ENABLE_READINESS_PROBE")
     
     # Initialize OpenAI client
     openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)

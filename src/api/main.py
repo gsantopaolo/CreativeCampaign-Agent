@@ -202,9 +202,14 @@ async def startup_event():
         raise RuntimeError(f"NATS connection failed: {e}")
     
     # ————— Readiness Probe —————
-    probe = ReadinessProbe(readiness_time_out=500)
-    threading.Thread(target=probe.start_server, daemon=True).start()
-    logger.info("  ✅ Readiness probe started on :8080/healthz")
+    enable_probe = os.getenv("API_ENABLE_READINESS_PROBE", "true").lower()
+    if enable_probe in ("true", "yes", "1"):
+        probe = ReadinessProbe(readiness_time_out=500)
+        threading.Thread(target=probe.start_server, daemon=True).start()
+        logger.info("  ✅ Readiness probe started on :8080/healthz")
+    else:
+        probe = ReadinessProbe(readiness_time_out=500)  # Still create for health tracking
+        logger.info("  ℹ️ Readiness probe disabled via API_ENABLE_READINESS_PROBE")
     
     # ————— Background Task —————
     asyncio.create_task(update_readiness_continuously())

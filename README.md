@@ -4,6 +4,12 @@ AI-powered creative automation for social ads: generate brand-safe images, add l
 
 ---
 
+## 🏎️ Just Want Run the App?  
+
+Jump to [Just Run](docs/just-run.md) and you'll be able to run CreativeCampaign-Agent in three commands!
+
+---
+
 ## 💡 Why This Approach?
 
 This isn't just a coding exercise—it's built like a real customer deployment. Instead of a toy demo, this POC demonstrates production-ready patterns you'd actually use at scale.
@@ -51,9 +57,23 @@ and **production-ready reliability**.
 
 ---
 
-## 🚀 Quick Start (5 Minutes)
+## 🚀 Quick Start
 
-### Prerequisites
+### ⚡ Super Quick (2 Minutes) - All-in-One Container
+
+**Just want to run it?** → **[QUICKSTART.md](QUICKSTART.md)** - 3 commands to get started!
+
+```bash
+curl -O https://raw.githubusercontent.com/gsantopaolo/CreativeCampaign-Agent/main/deployment/run-creative-campaign.sh
+chmod +x run-creative-campaign.sh
+./run-creative-campaign.sh sk-proj-YOUR-OPENAI-KEY
+```
+
+### 🔧 Full Setup (5 Minutes) - Multi-Container with Docker Compose
+
+**For development or production:**
+
+#### Prerequisites
 - Docker & Docker Compose installed
 - OpenAI API key ([get one here](https://platform.openai.com/api-keys))
 

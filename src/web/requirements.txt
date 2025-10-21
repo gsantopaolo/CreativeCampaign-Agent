@@ -1,4 +1,7 @@
-streamlit==1.31.0
+# Web UI - Unified Dependencies
+# Aligned with root requirements.txt
+
+streamlit==1.50.0
 requests==2.32.4
 python-dotenv==1.1.1
 pillow==10.2.0

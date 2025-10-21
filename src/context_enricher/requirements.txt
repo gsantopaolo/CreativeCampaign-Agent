@@ -1,6 +1,9 @@
+# Context Enricher - Unified Dependencies
+# Aligned with root requirements.txt
+
 motor==3.6.0
-nats-py==2.6.0
-python-dotenv==1.0.0
+nats-py==2.10.0             # ⬆️ Upgraded from 2.6.0
+python-dotenv==1.1.1        # ⬆️ Upgraded from 1.0.0
 protobuf==6.31.1
-openai>=1.50.0
-httpx==0.25.2
+openai>=1.54.0              # ⬆️ Upgraded minimum from 1.50.0
+httpx==0.24.1

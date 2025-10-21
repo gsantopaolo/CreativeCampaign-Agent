@@ -249,10 +249,14 @@ async def main():
     logger.info("🛠️ Context Enricher service starting...")
     
     # 1. Start the readiness probe server in a separate thread
+    enable_probe = os.getenv("CONTEXT_ENRICHER_ENABLE_READINESS_PROBE", "true").lower()
     readiness_probe = ReadinessProbe(readiness_time_out=READINESS_TIME_OUT)
-    readiness_probe_thread = threading.Thread(target=readiness_probe.start_server, daemon=True)
-    readiness_probe_thread.start()
-    logger.info("✅ Readiness probe server started.")
+    if enable_probe in ("true", "yes", "1"):
+        readiness_probe_thread = threading.Thread(target=readiness_probe.start_server, daemon=True)
+        readiness_probe_thread.start()
+        logger.info("✅ Readiness probe server started.")
+    else:
+        logger.info("ℹ️ Readiness probe disabled via CONTEXT_ENRICHER_ENABLE_READINESS_PROBE")
     
     # 2. Validate OpenAI API key
     if not OPENAI_API_KEY:

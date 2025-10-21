@@ -525,9 +525,13 @@ async def main():
     
     # Start readiness probe
     import threading
+    enable_probe = os.getenv("TEXT_OVERLAY_ENABLE_READINESS_PROBE", "true").lower()
     readiness_probe = ReadinessProbe(readiness_time_out=30)
-    threading.Thread(target=readiness_probe.start_server, daemon=True).start()
-    logger.info("  ✅ Readiness probe started on :8080/healthz")
+    if enable_probe in ("true", "yes", "1"):
+        threading.Thread(target=readiness_probe.start_server, daemon=True).start()
+        logger.info("  ✅ Readiness probe started on :8080/healthz")
+    else:
+        logger.info("  ℹ️ Readiness probe disabled via TEXT_OVERLAY_ENABLE_READINESS_PROBE")
     logger.info("")
     
     # Create publisher for text.overlaid events

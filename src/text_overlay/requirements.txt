@@ -1,9 +1,12 @@
+# Text Overlay - Unified Dependencies
+# Aligned with root requirements.txt
+
 nats-py==2.10.0
 protobuf==6.31.1
 python-dotenv==1.1.1
-openai>=1.12.0
-pillow==10.1.0
+openai>=1.54.0              # ⬆️ Upgraded minimum from 1.12.0
+pillow==10.2.0              # ⬆️ Upgraded from 10.1.0
 boto3==1.34.34
-motor==3.3.2
-pymongo==4.6.1
-httpx>=0.24.0,<0.25.0
+motor==3.6.0                # ⬆️ Upgraded from 3.3.2
+pymongo==4.9.0              # ⬆️ Upgraded from 4.6.1 (motor 3.6.0 requires >=4.9)
+httpx==0.24.1               # Reverted from 0.25.2 (breaking changes with Azure blob storage)
